@@ -1,0 +1,67 @@
+{
+  "systeminfo": "WHISPER : COREML = 0 | OPENVINO = 0 | CPU : NEON = 1 | ARM_FMA = 1 | METAL = 1 | ",
+  "model": {
+    "type": "small",
+    "multilingual": false,
+    "vocab": 51864,
+    "audio": { "ctx": 1500, "state": 768, "head": 12, "layer": 12 },
+    "text": { "ctx": 448, "state": 768, "head": 12, "layer": 12 },
+    "mels": 80,
+    "ftype": 1
+  },
+  "params": {
+    "model": "models/ggml-small.en.bin",
+    "language": "en",
+    "translate": false
+  },
+  "result": {
+    "language": "en"
+  },
+  "transcription": [
+    {
+      "timestamps": { "from": "00:00:00,000", "to": "00:00:00,320" },
+      "offsets": { "from": 0, "to": 320 },
+      "text": " Anchor"
+    },
+    {
+      "timestamps": { "from": "00:00:00,320", "to": "00:00:00,910" },
+      "offsets": { "from": 320, "to": 910 },
+      "text": " positioning"
+    },
+    {
+      "timestamps": { "from": "00:00:00,910", "to": "00:00:01,380" },
+      "offsets": { "from": 910, "to": 1380 },
+      "text": " ignores"
+    },
+    {
+      "timestamps": { "from": "00:00:01,380", "to": "00:00:01,800" },
+      "offsets": { "from": 1380, "to": 1800 },
+      "text": " scroll"
+    },
+    {
+      "timestamps": { "from": "00:00:01,800", "to": "00:00:01,800" },
+      "offsets": { "from": 1800, "to": 1800 },
+      "text": "."
+    },
+    {
+      "timestamps": { "from": "00:00:01,800", "to": "00:00:04,000" },
+      "offsets": { "from": 1800, "to": 4000 },
+      "text": " [BLANK_AUDIO]"
+    },
+    {
+      "timestamps": { "from": "00:00:04,000", "to": "00:00:04,250" },
+      "offsets": { "from": 4000, "to": 4250 },
+      "text": " Here's"
+    },
+    {
+      "timestamps": { "from": "00:00:04,250", "to": "00:00:04,500" },
+      "offsets": { "from": 4250, "to": 4500 },
+      "text": " why"
+    },
+    {
+      "timestamps": { "from": "00:00:04,500", "to": "00:00:04,500" },
+      "offsets": { "from": 4500, "to": 4500 },
+      "text": ""
+    }
+  ]
+}

@@ -1,11 +1,15 @@
-import { resolve } from "node:path";
+import { homedir } from "node:os";
+import { join, resolve } from "node:path";
+import { existsSync } from "node:fs";
 import { fileURLToPath } from "node:url";
 import { parseArgs } from "node:util";
 import packageJson from "../package.json" with { type: "json" };
+import { runCommand, type CommandRunner } from "./commands.ts";
 import { ShortError } from "./errors.ts";
 import { captureNote, listNotes, restoreNote } from "./notes/inbox.ts";
 import { openUrl } from "./open-url.ts";
 import { recordShort } from "./recorder/record.ts";
+import { transcribeShort } from "./transcribe/transcribe.ts";
 
 export interface CliIo {
   stdout: (text: string) => void;
@@ -19,6 +23,8 @@ export interface CliContext {
   // The folder with the built browser pages.
   webRoot: string;
   openUrl: (url: string) => Promise<void>;
+  runCommand: CommandRunner;
+  homeDirectory: string;
 }
 
 type CommandHandler = (args: string[], io: CliIo, context: CliContext) => Promise<number>;
@@ -82,6 +88,82 @@ async function fromCommand(args: string[], io: CliIo, context: CliContext): Prom
   return 0;
 }
 
+interface WhisperSettings {
+  modelPath: string;
+  whisperBinary: string;
+  language: string;
+}
+
+function firstGiven(...values: (string | undefined)[]): string | undefined {
+  return values.find((value) => value !== undefined && value !== "");
+}
+
+/** The model, binary and language from flags, then the environment, then the defaults. */
+function whisperSettings(
+  context: CliContext,
+  flags: { model?: string; language?: string } = {},
+): WhisperSettings {
+  const { environment } = context;
+  const defaultModelPath = join(
+    context.homeDirectory,
+    ".cache",
+    "shorty-pants",
+    "models",
+    "ggml-small.en.bin",
+  );
+  const configuredModel = firstGiven(flags.model, environment.SHORTY_PANTS_WHISPER_MODEL);
+  return {
+    modelPath:
+      configuredModel === undefined ? defaultModelPath : resolve(context.cwd, configuredModel),
+    whisperBinary: firstGiven(environment.SHORTY_PANTS_WHISPER_BIN) ?? "whisper-cli",
+    language: firstGiven(flags.language, environment.SHORTY_PANTS_WHISPER_LANGUAGE) ?? "en",
+  };
+}
+
+async function transcribeFolder(
+  shortFolder: string,
+  settings: WhisperSettings,
+  io: CliIo,
+  context: CliContext,
+) {
+  io.stdout(`Transcribing with ${settings.modelPath}\n`);
+  const transcript = await transcribeShort({ shortFolder, ...settings, run: context.runCommand });
+  io.stdout(
+    `Transcribed ${transcript.words.length} words into ${join(shortFolder, "transcript.json")}\n`,
+  );
+}
+
+const transcribeUsage =
+  "Usage: short transcribe <short folder> [--model <file>] [--language <code>]\n";
+
+async function transcribeCommand(args: string[], io: CliIo, context: CliContext): Promise<number> {
+  let parsed;
+  try {
+    parsed = parseArgs({
+      args,
+      allowPositionals: true,
+      options: { model: { type: "string" }, language: { type: "string" } },
+    });
+  } catch {
+    io.stderr(transcribeUsage);
+    return 2;
+  }
+
+  const [folder] = parsed.positionals;
+  if (folder === undefined || parsed.positionals.length > 1) {
+    io.stderr(transcribeUsage);
+    return 2;
+  }
+
+  await transcribeFolder(
+    resolve(context.cwd, folder),
+    whisperSettings(context, parsed.values),
+    io,
+    context,
+  );
+  return 0;
+}
+
 const recordUsage = 'Usage: short record ["<title>"] [--root <folder>] [--no-open]\n';
 
 async function recordCommand(args: string[], io: CliIo, context: CliContext): Promise<number> {
@@ -134,6 +216,22 @@ async function recordCommand(args: string[], io: CliIo, context: CliContext): Pr
       return 1;
     }
     io.stdout(`Saved the take in ${result.folder}\n`);
+
+    // The take is safe on disk, so a transcription problem never fails the recording.
+    const settings = whisperSettings(context);
+    const transcribeLater = `Run short transcribe "${result.folder}" to transcribe it.`;
+    if (!existsSync(settings.modelPath)) {
+      io.stdout(
+        `No whisper model at ${settings.modelPath}. Once one is set up, ${transcribeLater}\n`,
+      );
+      return 0;
+    }
+    try {
+      await transcribeFolder(result.folder, settings, io, context);
+    } catch (error) {
+      const reason = error instanceof Error ? error.message : String(error);
+      io.stderr(`The take was saved, but transcription failed. ${reason}\n${transcribeLater}\n`);
+    }
     return 0;
   } finally {
     process.removeListener("SIGINT", cancel);
@@ -149,6 +247,11 @@ const commands: CommandDescription[] = [
   { name: "notes", summary: "List saved ideas", handler: notesCommand },
   { name: "from", summary: "Restore a note's Git state in a new worktree", handler: fromCommand },
   { name: "record", summary: "Open the recorder for a new short", handler: recordCommand },
+  {
+    name: "transcribe",
+    summary: "Transcribe a recorded take with whisper.cpp",
+    handler: transcribeCommand,
+  },
   { name: "edit", summary: "Open the editor for an existing short", handler: { milestone: 5 } },
   {
     name: "render",
@@ -183,6 +286,8 @@ const defaultContext: CliContext = {
   // The built CLI lives in dist/, next to dist-web/.
   webRoot: fileURLToPath(new URL("../dist-web/", import.meta.url)),
   openUrl,
+  runCommand,
+  homeDirectory: homedir(),
 };
 
 /**

@@ -4,6 +4,20 @@ A local-first tool that turns a moment of discovery while coding into a finished
 
 This project is in early development. Run `short --help` to see the planned commands; each one arrives with its milestone.
 
+## Transcription
+
+Takes are transcribed locally with [whisper.cpp](https://github.com/ggml-org/whisper.cpp), which needs ffmpeg and a model file. On macOS, both tools come from Homebrew, and the Homebrew build of whisper.cpp uses Metal on Apple silicon.
+
+```bash
+brew install ffmpeg whisper-cpp
+curl --create-dirs -L -o ~/.cache/shorty-pants/models/ggml-small.en.bin \
+  https://huggingface.co/ggerganov/whisper.cpp/resolve/main/ggml-small.en.bin
+```
+
+`short record` transcribes each take as soon as it is saved, and `short transcribe <short folder>` transcribes one again. The words and their times are written to `transcript.json` in the short folder.
+
+The model is `~/.cache/shorty-pants/models/ggml-small.en.bin` unless `--model` or `SHORTY_PANTS_WHISPER_MODEL` names another one. `SHORTY_PANTS_WHISPER_BIN` sets the whisper-cli binary, and `--language` or `SHORTY_PANTS_WHISPER_LANGUAGE` sets the spoken language, which is English by default.
+
 ## Development
 
 The project uses [Vite+](https://viteplus.dev/) with pnpm and requires Node 24.11 or newer.
