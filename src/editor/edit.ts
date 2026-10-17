@@ -130,7 +130,20 @@ export async function editShort(options: EditShortOptions): Promise<EditShortRes
   );
 
   const shortPath = join(shortFolder, "short.json");
-  if (!existsSync(shortPath)) {
+  if (existsSync(shortPath)) {
+    // short transcribe --force replaces the transcript and keeps short.json,
+    // whose cuts and trim may refer to words and times that no longer exist.
+    // The editor could not save such a file, so it is refused up front.
+    const existing = await readValidated(shortPath, `${shortPath} is missing.`, parseShortProject);
+    const lastWordIndex = transcript.words.length - 1;
+    const hasCutsPastLastWord = existing.removedWords.some(([, toWord]) => toWord > lastWordIndex);
+    const hasTrimPastRecording = existing.trim.endMs > transcript.durationMs;
+    if (hasCutsPastLastWord || hasTrimPastRecording) {
+      throw new ShortError(
+        `${shortPath} does not match transcript.json, which has changed since the edits were made. Remove short.json to start editing again.`,
+      );
+    }
+  } else {
     const short = createShortProject({ recordedTakes, transcript, preset: defaultPreset });
     await writeFile(shortPath, `${JSON.stringify(short, null, 2)}\n`);
   }

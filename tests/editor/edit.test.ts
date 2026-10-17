@@ -190,6 +190,44 @@ describe("short edit", () => {
     expect(saved.trim).toEqual({ startMs: 0, endMs: 4000 });
   });
 
+  test("refuses a short.json whose cuts no longer match the transcript", async () => {
+    const stale = {
+      version: 1,
+      takes: { cam: "takes/cam.webm", screen: "takes/screen.webm", screenOffsetMs: 42 },
+      trim: { startMs: 0, endMs: 4000 },
+      // The transcript has three words, so index 7 is from an older transcript.
+      removedWords: [[5, 7]],
+      pauseThresholdMs: 600,
+      segments: [{ fromWord: 0, layout: "split" }],
+    };
+    writeFileSync(join(shortFolder, "short.json"), JSON.stringify(stale));
+    const { io, output } = createIo();
+    expect(await run(["edit", shortFolder], io, context())).toBe(1);
+    expect(output.stderr).toContain("does not match transcript.json");
+  });
+
+  test("refuses a short.json whose trim ends after the recording", async () => {
+    const stale = {
+      version: 1,
+      takes: { cam: "takes/cam.webm", screen: "takes/screen.webm", screenOffsetMs: 42 },
+      trim: { startMs: 0, endMs: 9000 },
+      removedWords: [],
+      pauseThresholdMs: 600,
+      segments: [{ fromWord: 0, layout: "split" }],
+    };
+    writeFileSync(join(shortFolder, "short.json"), JSON.stringify(stale));
+    const { io, output } = createIo();
+    expect(await run(["edit", shortFolder], io, context())).toBe(1);
+    expect(output.stderr).toContain("does not match transcript.json");
+  });
+
+  test("explains a short.json that is not valid JSON", async () => {
+    writeFileSync(join(shortFolder, "short.json"), "{ not json");
+    const { io, output } = createIo();
+    expect(await run(["edit", shortFolder], io, context())).toBe(1);
+    expect(output.stderr).toContain("is not valid JSON");
+  });
+
   test("asks for a transcript first", async () => {
     rmSync(join(shortFolder, "transcript.json"));
     const { io, output } = createIo();
