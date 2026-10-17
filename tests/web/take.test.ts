@@ -1,6 +1,5 @@
 import { describe, expect, test } from "vite-plus/test";
 import {
-  formatElapsed,
   maximumTakeMs,
   pickMimeType,
   readSessionToken,
@@ -40,14 +39,6 @@ describe("readSessionToken", () => {
   test("returns null when the fragment has no token", () => {
     expect(readSessionToken("")).toBeNull();
     expect(readSessionToken("#token=")).toBeNull();
-  });
-});
-
-describe("formatElapsed", () => {
-  test("shows minutes and zero-padded seconds", () => {
-    expect(formatElapsed(0)).toBe("0:00");
-    expect(formatElapsed(42_900)).toBe("0:42");
-    expect(formatElapsed(maximumTakeMs)).toBe("3:00");
   });
 });
 

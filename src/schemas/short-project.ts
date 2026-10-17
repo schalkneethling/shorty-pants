@@ -98,8 +98,10 @@ export const shortProjectSchema = z.object({
   trim: trimSchema,
   removedWords: z.array(removedWordRangeSchema),
   pauseThresholdMs: milliseconds,
-  headline: headlineSchema,
-  screenCrop: screenCropSchema,
+  // The headline and the screen crop are chosen after the cuts, so a short
+  // being edited has neither yet. Rendering needs the headline.
+  headline: headlineSchema.optional(),
+  screenCrop: screenCropSchema.optional(),
   segments: segmentsSchema,
 });
 

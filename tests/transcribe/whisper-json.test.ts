@@ -52,6 +52,29 @@ describe("parseWhisperWords", () => {
     expect(words).toEqual([{ text: "Hello,", startMs: 100, endMs: 400 }]);
   });
 
+  test("only looks for the end of a sound marker in the segment where it starts", () => {
+    const input = {
+      transcription: [
+        {
+          offsets: { from: 0, to: 1000 },
+          text: "",
+          tokens: [token(" (so", 0, 300), token(" anyway", 300, 700)],
+        },
+        {
+          offsets: { from: 1000, to: 2000 },
+          text: "",
+          tokens: [token(" this", 1000, 1300), token(" works)", 1300, 1700)],
+        },
+      ],
+    };
+    expect(parseWhisperWords(input).map((word) => word.text)).toEqual([
+      "(so",
+      "anyway",
+      "this",
+      "works)",
+    ]);
+  });
+
   test("returns no words for an empty transcription", () => {
     expect(parseWhisperWords({ transcription: [] })).toEqual([]);
   });

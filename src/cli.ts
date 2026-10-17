@@ -5,6 +5,9 @@ import { fileURLToPath } from "node:url";
 import { parseArgs } from "node:util";
 import packageJson from "../package.json" with { type: "json" };
 import { runCommand, type CommandRunner } from "./commands.ts";
+import { computeKeepRanges } from "./edit/cut-list.ts";
+import { keptDurationMs } from "./edit/playback.ts";
+import { editShort } from "./editor/edit.ts";
 import { ShortError } from "./errors.ts";
 import { captureNote, listNotes, restoreNote } from "./notes/inbox.ts";
 import { openUrl } from "./open-url.ts";
@@ -262,6 +265,77 @@ async function recordCommand(args: string[], io: CliIo, context: CliContext): Pr
   return 0;
 }
 
+const editUsage = "Usage: short edit <short folder> [--no-open]\n";
+
+function formatDuration(milliseconds: number): string {
+  const totalSeconds = Math.floor(milliseconds / 1000);
+  return `${Math.floor(totalSeconds / 60)}:${String(totalSeconds % 60).padStart(2, "0")}`;
+}
+
+async function editCommand(args: string[], io: CliIo, context: CliContext): Promise<number> {
+  let parsed;
+  try {
+    parsed = parseArgs({
+      args,
+      allowPositionals: true,
+      options: {
+        "no-open": { type: "boolean", default: false },
+        help: { type: "boolean", default: false },
+      },
+    });
+  } catch {
+    io.stderr(editUsage);
+    return 2;
+  }
+  if (parsed.values.help) {
+    io.stdout(editUsage);
+    return 0;
+  }
+  const [folder] = parsed.positionals;
+  if (folder === undefined || parsed.positionals.length > 1) {
+    io.stderr(editUsage);
+    return 2;
+  }
+
+  // Ctrl+C stops the editor; every change is already saved in short.json.
+  const controller = new AbortController();
+  const cancel = () => controller.abort();
+  process.once("SIGINT", cancel);
+
+  let result;
+  try {
+    result = await editShort({
+      shortFolder: resolve(context.cwd, folder),
+      webRoot: context.webRoot,
+      run: context.runCommand,
+      signal: controller.signal,
+      onReady: async (url) => {
+        io.stdout(`The editor is open at ${url}\n`);
+        io.stdout(
+          "Every change is saved as you go. Press Done in the editor or Ctrl+C here when finished.\n",
+        );
+        if (!parsed.values["no-open"]) {
+          await context.openUrl(url);
+        }
+      },
+    });
+  } finally {
+    process.removeListener("SIGINT", cancel);
+  }
+
+  if (result.outcome === "cancelled") {
+    io.stdout("The editor was closed. Your changes are saved in short.json.\n");
+    return 0;
+  }
+  const { short, transcript } = result;
+  const keptMs = keptDurationMs(computeKeepRanges({ words: transcript.words, ...short }));
+  const cutCount = short.removedWords.length;
+  io.stdout(
+    `Saved short.json with ${cutCount} ${cutCount === 1 ? "cut" : "cuts"}. The short is ${formatDuration(keptMs)} long.\n`,
+  );
+  return 0;
+}
+
 const commands: CommandDescription[] = [
   {
     name: "note",
@@ -276,7 +350,7 @@ const commands: CommandDescription[] = [
     summary: "Transcribe a recorded take with whisper.cpp",
     handler: transcribeCommand,
   },
-  { name: "edit", summary: "Open the editor for an existing short", handler: { milestone: 5 } },
+  { name: "edit", summary: "Open the editor for a recorded short", handler: editCommand },
   {
     name: "render",
     summary: "Render short.mp4, captions.vtt and upload.txt",

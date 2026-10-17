@@ -26,6 +26,8 @@ const whisperOutputSchema = z.object({
 
 interface DraftWord {
   text: string;
+  // The whisper segment the word came from; sound markers never span segments.
+  segment: number;
   startMs?: number;
   endMs?: number;
 }
@@ -40,14 +42,14 @@ const closingBracket: Record<string, string> = { "[": "]", "(": ")" };
 /** Groups tokens into words: a token that starts with a space begins a new word. */
 function groupTokens(segments: z.infer<typeof whisperOutputSchema>["transcription"]): DraftWord[] {
   const words: DraftWord[] = [];
-  for (const segment of segments) {
+  for (const [segmentIndex, segment] of segments.entries()) {
     let current: DraftWord | undefined;
     for (const token of segment.tokens ?? []) {
       if (specialToken.test(token.text)) {
         continue;
       }
       if (current === undefined || /^\s/.test(token.text)) {
-        current = { text: "" };
+        current = { text: "", segment: segmentIndex };
         words.push(current);
       }
       current.text += token.text;
@@ -75,8 +77,10 @@ function dropSoundMarkers(words: DraftWord[]): DraftWord[] {
       kept.push(words[index]!);
       continue;
     }
+    const opening = words[index]!;
     const closingIndex = words.findIndex(
-      (word, candidate) => candidate >= index && word.text.includes(closing),
+      (word, candidate) =>
+        candidate >= index && word.segment === opening.segment && word.text.includes(closing),
     );
     if (closingIndex === -1) {
       kept.push(words[index]!);

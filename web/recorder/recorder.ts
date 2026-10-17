@@ -1,6 +1,6 @@
+import { formatElapsed } from "../shared/time.ts";
 import {
   cameraMimeTypes,
-  formatElapsed,
   maximumTakeMs,
   pickMimeType,
   readSessionToken,
