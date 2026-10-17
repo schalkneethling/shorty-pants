@@ -142,6 +142,37 @@ describe("short record", () => {
     expect(output.stdout).toContain("Saved the take");
   });
 
+  test("names a short whose title is only punctuation after the date", async () => {
+    const { io } = createIo();
+    const { context } = createContext();
+    await run(["record", "!!!"], io, context);
+    expect(existsSync(join(workspace, "shorts", "2026-10-17-short", "takes.json"))).toBe(true);
+  });
+
+  test("resolves a relative --root against the folder the command runs in", async () => {
+    const { io, output } = createIo();
+    const { context } = createContext();
+    await run(["record", "--root", "relative-root", "Scroll"], io, context);
+    const folder = join(workspace, "relative-root", "2026-10-17-scroll");
+    expect(existsSync(join(folder, "takes.json"))).toBe(true);
+    expect(output.stdout).toContain(`Saved the take in ${folder}`);
+  });
+
+  test("treats an empty --root as not given", async () => {
+    const { io } = createIo();
+    const { context } = createContext();
+    await run(["record", "--root", "", "Scroll"], io, context);
+    expect(existsSync(join(workspace, "shorts", "2026-10-17-scroll", "takes.json"))).toBe(true);
+  });
+
+  test("reports a shorts root that is a file", async () => {
+    writeFileSync(join(workspace, "not-a-folder"), "");
+    const { io, output } = createIo();
+    const { context } = createContext();
+    expect(await run(["record", "--root", "not-a-folder"], io, context)).toBe(1);
+    expect(output.stderr).toContain("is not a folder");
+  });
+
   test("reports a missing recorder page", async () => {
     const { io, output } = createIo();
     const { context } = createContext({ webRoot: join(workspace, "missing") });

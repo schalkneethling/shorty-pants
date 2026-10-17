@@ -6,6 +6,7 @@ import {
   readFileSync,
   realpathSync,
   rmSync,
+  symlinkSync,
   writeFileSync,
 } from "node:fs";
 import { tmpdir } from "node:os";
@@ -15,6 +16,8 @@ import { startRecorderServer, type RecorderServer } from "../../src/recorder/ser
 import { parseRecordedTakes } from "../../src/schemas/recorded-takes.ts";
 
 const token = "test-token-0123456789abcdef";
+// Bytes that are not valid UTF-8, to catch files being read as text.
+const binaryFont = Buffer.from([0x77, 0x4f, 0x46, 0x32, 0xff, 0xfe, 0x00, 0x80]);
 let workspace: string;
 let shortFolder: string;
 let server: RecorderServer;
@@ -22,6 +25,7 @@ let server: RecorderServer;
 interface RawResponse {
   status: number;
   body: string;
+  bytes: Buffer;
 }
 
 // fetch normalizes paths and forbids changing the Host header, so path and
@@ -35,12 +39,12 @@ function rawRequest(
     const outgoing = request(
       { host: "127.0.0.1", port, path, method: options.method ?? "GET", headers: options.headers },
       (response) => {
-        let body = "";
-        response.setEncoding("utf8");
-        response.on("data", (chunk: string) => {
-          body += chunk;
+        const chunks: Buffer[] = [];
+        response.on("data", (chunk: Buffer) => chunks.push(chunk));
+        response.on("end", () => {
+          const bytes = Buffer.concat(chunks);
+          resolve({ status: response.statusCode ?? 0, body: bytes.toString("utf8"), bytes });
         });
-        response.on("end", () => resolve({ status: response.statusCode ?? 0, body }));
       },
     );
     outgoing.on("error", reject);
@@ -66,10 +70,12 @@ function finish(body: unknown) {
 
 beforeEach(async () => {
   workspace = realpathSync(mkdtempSync(join(tmpdir(), "shorty-pants-server-")));
+  writeFileSync(join(workspace, "secret.txt"), "do not serve");
   const webRoot = join(workspace, "web");
   mkdirSync(join(webRoot, "recorder"), { recursive: true });
   writeFileSync(join(webRoot, "recorder", "index.html"), "<!doctype html><title>Recorder</title>");
-  writeFileSync(join(workspace, "secret.txt"), "do not serve");
+  writeFileSync(join(webRoot, "recorder", "font.woff2"), binaryFont);
+  symlinkSync(join(workspace, "secret.txt"), join(webRoot, "recorder", "linked.txt"));
   shortFolder = join(workspace, "shorts", "2026-10-17-anchor-scroll");
 
   server = await startRecorderServer({
@@ -106,6 +112,23 @@ describe("startRecorderServer", () => {
     const response = await rawRequest("/recorder/../../secret.txt");
     expect(response.status).toBe(404);
     expect(response.body).not.toContain("do not serve");
+  });
+
+  test("does not follow symbolic links out of the web root", async () => {
+    const response = await rawRequest("/recorder/linked.txt");
+    expect(response.status).toBe(404);
+    expect(response.body).not.toContain("do not serve");
+  });
+
+  test("answers a malformed percent-encoding with 400", async () => {
+    const response = await rawRequest("/recorder/%E0%A4%A");
+    expect(response.status).toBe(400);
+  });
+
+  test("serves binary files byte for byte", async () => {
+    const response = await rawRequest("/recorder/font.woff2");
+    expect(response.status).toBe(200);
+    expect(response.bytes.equals(binaryFont)).toBe(true);
   });
 
   test("refuses requests for another host name, to block DNS rebinding", async () => {
@@ -152,6 +175,66 @@ describe("take uploads", () => {
     expect(existsSync(join(shortFolder, "takes", "screen.webm.partial"))).toBe(false);
   });
 
+  test("answer an oversized streamed upload with 413 instead of dropping the connection", async () => {
+    const { port } = new URL(server.url);
+    const status = await new Promise<number>((resolve, reject) => {
+      const outgoing = request(
+        {
+          host: "127.0.0.1",
+          port,
+          path: "/api/takes/screen",
+          method: "PUT",
+          headers: { authorization: `Bearer ${token}`, "content-type": "video/webm" },
+        },
+        (response) => {
+          response.resume();
+          resolve(response.statusCode ?? 0);
+        },
+      );
+      outgoing.on("error", reject);
+      // Send more than the limit in small pieces, without a Content-Length.
+      let sent = 0;
+      const sendChunk = () => {
+        if (sent >= 4096) {
+          outgoing.end();
+          return;
+        }
+        sent += 256;
+        outgoing.write(Buffer.alloc(256), () => setTimeout(sendChunk, 1));
+      };
+      sendChunk();
+    });
+    expect(status).toBe(413);
+    expect(existsSync(join(shortFolder, "takes", "screen.webm"))).toBe(false);
+  });
+
+  test("refuse a second upload of a track while the first is still arriving", async () => {
+    const { port } = new URL(server.url);
+    const first = request({
+      host: "127.0.0.1",
+      port,
+      path: "/api/takes/cam",
+      method: "PUT",
+      headers: { authorization: `Bearer ${token}`, "content-type": "video/webm" },
+    });
+    const firstStatus = new Promise<number>((resolve) => {
+      first.on("response", (response) => {
+        response.resume();
+        resolve(response.statusCode ?? 0);
+      });
+    });
+    first.write(Buffer.from("first "));
+    // Give the server time to start receiving the first upload.
+    await new Promise((resolve) => setTimeout(resolve, 50));
+
+    const second = await upload("cam", Buffer.from("second"));
+    first.end(Buffer.from("upload"));
+
+    expect(second.status).toBe(409);
+    expect(await firstStatus).toBe(204);
+    expect(readFileSync(join(shortFolder, "takes", "cam.webm"), "utf8")).toBe("first upload");
+  });
+
   test("refuse a track whose declared size is over the limit", async () => {
     const response = await upload("screen", Buffer.alloc(2048), { "content-length": "2048" });
     expect(response.status).toBe(413);
@@ -171,6 +254,18 @@ describe("finishing a take", () => {
     await upload("screen", Buffer.from("screen"));
     const response = await finish({ screenOffsetMs: "soon" });
     expect(response.status).toBe(400);
+  });
+
+  test("refuses uploads after the take was saved", async () => {
+    await upload("cam", Buffer.from("camera"));
+    await upload("screen", Buffer.from("screen"));
+    await finish({ screenOffsetMs: 0 });
+
+    const lateUpload = await upload("cam", Buffer.from("late"));
+    const secondFinish = await finish({ screenOffsetMs: 0 });
+    expect(lateUpload.status).toBe(409);
+    expect(secondFinish.status).toBe(409);
+    expect(readFileSync(join(shortFolder, "takes", "cam.webm"), "utf8")).toBe("camera");
   });
 
   test("writes takes.json and resolves the saved promise", async () => {

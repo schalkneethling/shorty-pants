@@ -29,6 +29,10 @@ describe("createDatedId", () => {
     expect(createDatedId("!!!", date, [])).toBe("2026-10-17-note");
   });
 
+  test("uses the given fallback when the title has no letters or digits", () => {
+    expect(createDatedId("!!!", date, [], "short")).toBe("2026-10-17-short");
+  });
+
   test("adds a number when the id is already taken", () => {
     const existing = ["2026-10-17-scroll", "2026-10-17-scroll-2"];
     expect(createDatedId("Scroll", date, existing)).toBe("2026-10-17-scroll-3");

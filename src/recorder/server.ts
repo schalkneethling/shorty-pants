@@ -1,10 +1,8 @@
 import { createWriteStream, existsSync } from "node:fs";
-import { mkdir, readFile, rename, rm, stat, writeFile } from "node:fs/promises";
+import { mkdir, readFile, realpath, rename, rm, stat, writeFile } from "node:fs/promises";
 import { createServer, type IncomingMessage, type ServerResponse } from "node:http";
 import type { AddressInfo } from "node:net";
 import { extname, join, normalize, resolve, sep } from "node:path";
-import { Transform } from "node:stream";
-import { pipeline } from "node:stream/promises";
 import { z } from "zod";
 import type { RecordedTakes } from "../schemas/recorded-takes.ts";
 
@@ -61,7 +59,7 @@ class HttpError extends Error {
 function send(
   response: ServerResponse,
   status: number,
-  body = "",
+  body: string | Buffer = "",
   contentType = "text/plain; charset=utf-8",
 ) {
   response.writeHead(status, {
@@ -98,6 +96,9 @@ async function readJsonBody(request: IncomingMessage, maxBytes: number): Promise
 export async function startRecorderServer(options: RecorderServerOptions): Promise<RecorderServer> {
   const maxUploadBytes = options.maxUploadBytes ?? defaultMaxUploadBytes;
   const webRoot = resolve(options.webRoot);
+  let isSaved = false;
+  const uploadsInProgress = new Set<Track>();
+  let realWebRoot: string | undefined;
   let resolveSaved: (takes: RecordedTakes) => void = () => {};
   const saved = new Promise<RecordedTakes>((resolvePromise) => {
     resolveSaved = resolvePromise;
@@ -105,15 +106,73 @@ export async function startRecorderServer(options: RecorderServerOptions): Promi
 
   async function serveStatic(pathname: string, response: ServerResponse) {
     const relativePath = pathname.endsWith("/") ? `${pathname}index.html` : pathname;
-    const filePath = normalize(join(webRoot, decodeURIComponent(relativePath)));
+    let decodedPath: string;
+    try {
+      decodedPath = decodeURIComponent(relativePath);
+    } catch {
+      throw new HttpError(400, "The path is not valid percent-encoding.");
+    }
+
+    const notFound = new HttpError(404, "Not found.");
+    const filePath = normalize(join(webRoot, decodedPath));
     const isInsideWebRoot = filePath.startsWith(`${webRoot}${sep}`);
-    const isFile = isInsideWebRoot && existsSync(filePath) && (await stat(filePath)).isFile();
-    if (!isFile) {
-      throw new HttpError(404, "Not found.");
+    if (!isInsideWebRoot || !existsSync(filePath)) {
+      throw notFound;
+    }
+
+    // The check above is about the path as written; resolving symbolic links
+    // makes sure the file itself is inside the web root too.
+    realWebRoot ??= await realpath(webRoot);
+    const realFilePath = await realpath(filePath);
+    const isReallyInsideWebRoot = realFilePath.startsWith(`${realWebRoot}${sep}`);
+    if (!isReallyInsideWebRoot || !(await stat(realFilePath)).isFile()) {
+      throw notFound;
     }
 
     const contentType = contentTypes[extname(filePath)] ?? "application/octet-stream";
-    send(response, 200, await readFile(filePath, "utf8"), contentType);
+    send(response, 200, await readFile(realFilePath), contentType);
+  }
+
+  async function writeUpload(request: IncomingMessage, partialPath: string): Promise<number> {
+    const tooLarge = new HttpError(413, "The track is larger than the upload limit.");
+    const declaredBytes = Number(request.headers["content-length"] ?? 0);
+    if (declaredBytes > maxUploadBytes) {
+      throw tooLarge;
+    }
+
+    const file = createWriteStream(partialPath);
+    let receivedBytes = 0;
+    await new Promise<void>((resolveWrite, rejectWrite) => {
+      let failed = false;
+      // The request is not destroyed on failure, so the error response can
+      // still reach the browser. The rest of the body is read and discarded.
+      const fail = (error: Error) => {
+        if (failed) {
+          return;
+        }
+        failed = true;
+        request.unpipe(file);
+        file.destroy();
+        rejectWrite(error);
+      };
+
+      // Uploads without a Content-Length are counted as they arrive.
+      request.on("data", (chunk: Buffer) => {
+        receivedBytes += chunk.length;
+        if (receivedBytes > maxUploadBytes) {
+          fail(tooLarge);
+        }
+      });
+      request.once("close", () => {
+        if (!request.complete) {
+          fail(new HttpError(400, "The upload was interrupted."));
+        }
+      });
+      file.once("error", fail);
+      file.once("finish", () => resolveWrite());
+      request.pipe(file);
+    });
+    return receivedBytes;
   }
 
   async function receiveTrack(track: Track, request: IncomingMessage, response: ServerResponse) {
@@ -121,42 +180,39 @@ export async function startRecorderServer(options: RecorderServerOptions): Promi
     if (!contentType.startsWith("video/webm")) {
       throw new HttpError(415, "Tracks must be sent as video/webm.");
     }
-
-    const finalPath = trackPath(options.shortFolder, track);
-    const partialPath = `${finalPath}.partial`;
-    await mkdir(join(options.shortFolder, "takes"), { recursive: true });
-
-    const tooLarge = new HttpError(413, "The track is larger than the upload limit.");
-    const declaredBytes = Number(request.headers["content-length"] ?? 0);
-    if (declaredBytes > maxUploadBytes) {
-      throw tooLarge;
+    if (isSaved) {
+      throw new HttpError(409, "The take is already saved.");
+    }
+    // Two uploads of the same track would write into the same partial file.
+    if (uploadsInProgress.has(track)) {
+      throw new HttpError(409, "This track is already being uploaded.");
     }
 
-    // Uploads without a Content-Length are counted as they arrive.
-    let receivedBytes = 0;
-    const sizeLimit = new Transform({
-      transform(chunk: Buffer, _encoding, callback) {
-        receivedBytes += chunk.length;
-        callback(receivedBytes > maxUploadBytes ? tooLarge : null, chunk);
-      },
-    });
-
+    uploadsInProgress.add(track);
+    const finalPath = trackPath(options.shortFolder, track);
+    const partialPath = `${finalPath}.partial`;
     try {
+      await mkdir(join(options.shortFolder, "takes"), { recursive: true });
       // Writing to a partial file and renaming it means a cut-off upload never
       // looks like a finished track.
-      await pipeline(request, sizeLimit, createWriteStream(partialPath));
+      const receivedBytes = await writeUpload(request, partialPath);
       if (receivedBytes === 0) {
         throw new HttpError(400, "The track is empty.");
       }
       await rename(partialPath, finalPath);
     } catch (error) {
       await rm(partialPath, { force: true });
-      throw error instanceof HttpError ? error : new HttpError(400, "The upload was interrupted.");
+      throw error;
+    } finally {
+      uploadsInProgress.delete(track);
     }
     send(response, 204);
   }
 
   async function finishTake(request: IncomingMessage, response: ServerResponse) {
+    if (isSaved) {
+      throw new HttpError(409, "The take is already saved.");
+    }
     const result = finishRequestSchema.safeParse(await readJsonBody(request, 4096));
     if (!result.success) {
       throw new HttpError(400, "screenOffsetMs must be a whole number of milliseconds.");
@@ -185,6 +241,7 @@ export async function startRecorderServer(options: RecorderServerOptions): Promi
       join(options.shortFolder, "takes.json"),
       `${JSON.stringify(recordedTakes, null, 2)}\n`,
     );
+    isSaved = true;
     send(response, 201, JSON.stringify({ folder: options.shortFolder }), "application/json");
     resolveSaved(recordedTakes);
   }
@@ -237,11 +294,12 @@ export async function startRecorderServer(options: RecorderServerOptions): Promi
       const status = error instanceof HttpError ? error.status : 500;
       const message = error instanceof HttpError ? error.message : "Internal error.";
       if (!response.headersSent) {
-        // Closing the connection after the response stops the browser from
-        // sending the rest of a refused upload.
+        // The connection closes after this response. Reading and discarding
+        // the rest of a refused upload lets the browser see the response
+        // instead of a dropped connection.
         response.setHeader("connection", "close");
-        response.once("finish", () => request.destroy());
         send(response, status, message);
+        request.resume();
       }
     });
   });

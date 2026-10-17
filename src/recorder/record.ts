@@ -1,6 +1,6 @@
 import { randomBytes } from "node:crypto";
 import { existsSync } from "node:fs";
-import { mkdir, readdir } from "node:fs/promises";
+import { mkdir, readdir, stat } from "node:fs/promises";
 import { join } from "node:path";
 import { createDatedId } from "../dated-id.ts";
 import { ShortError } from "../errors.ts";
@@ -25,6 +25,9 @@ async function existingShortIds(shortsRoot: string): Promise<string[]> {
   if (!existsSync(shortsRoot)) {
     return [];
   }
+  if (!(await stat(shortsRoot)).isDirectory()) {
+    throw new ShortError(`The shorts root ${shortsRoot} is not a folder.`);
+  }
   const entries = await readdir(shortsRoot, { withFileTypes: true });
   return entries.filter((entry) => entry.isDirectory()).map((entry) => entry.name);
 }
@@ -41,17 +44,24 @@ export async function recordShort(options: RecordShortOptions): Promise<RecordSh
     );
   }
 
-  const title = options.title.trim() === "" ? "short" : options.title;
-  const id = createDatedId(title, options.now(), await existingShortIds(options.shortsRoot));
+  const existingIds = await existingShortIds(options.shortsRoot);
+  const id = createDatedId(options.title, options.now(), existingIds, "short");
   const folder = join(options.shortsRoot, id);
-  await mkdir(folder, { recursive: true });
 
+  // The folder is created once the server is listening, so a server that
+  // cannot start leaves nothing behind.
   const server = await startRecorderServer({
     shortFolder: folder,
     webRoot: options.webRoot,
     token: randomBytes(24).toString("base64url"),
     now: options.now,
   });
+  try {
+    await mkdir(folder, { recursive: true });
+  } catch (error) {
+    await server.close();
+    throw error;
+  }
 
   const cancelled = new Promise<"cancelled">((resolveCancelled) => {
     if (options.signal?.aborted) {

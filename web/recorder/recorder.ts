@@ -10,6 +10,10 @@ import {
 
 type Track = "cam" | "screen";
 
+// setup: choosing the camera and window. recording: a take is running.
+// saving: the take is being uploaded. saved: the take is on disk.
+type Phase = "setup" | "recording" | "saving" | "saved";
+
 interface TrackRecording {
   recorder: MediaRecorder;
   // When the recorder started, on the same clock as performance.now().
@@ -38,6 +42,9 @@ const token = readSessionToken(window.location.hash);
 const cameraMimeType = pickMimeType(cameraMimeTypes, (type) => MediaRecorder.isTypeSupported(type));
 const screenMimeType = pickMimeType(screenMimeTypes, (type) => MediaRecorder.isTypeSupported(type));
 
+const trackNames: Record<Track, string> = { cam: "camera", screen: "screen" };
+
+let phase: Phase = "setup";
 let cameraStream: MediaStream | null = null;
 let screenStream: MediaStream | null = null;
 let recordings: Record<Track, TrackRecording> | null = null;
@@ -47,14 +54,38 @@ function announce(message: string) {
   status.textContent = message;
 }
 
-function disableAll() {
-  for (const button of [cameraButton, screenButton, recordButton, stopButton]) {
-    button.disabled = true;
-  }
+/** Sets every button from the current phase and sources, so no two code paths disagree. */
+function updateControls() {
+  const isSetup = phase === "setup";
+  const hasBothSources = cameraStream !== null && screenStream !== null;
+
+  cameraButton.disabled = !isSetup || cameraStream !== null;
+  screenButton.disabled = !isSetup;
+  screenButton.textContent = screenStream === null ? "Choose window" : "Choose another window";
+  recordButton.disabled = !isSetup || !hasBothSources;
+
+  // While a take is saved, Stop keeps keyboard focus instead of dropping it
+  // to the page, so it is marked unavailable rather than disabled.
+  const stopIsUnavailable = phase === "saving" || phase === "saved";
+  stopButton.disabled = isSetup;
+  stopButton.setAttribute("aria-disabled", String(stopIsUnavailable));
 }
 
-function updateRecordButton() {
-  recordButton.disabled = cameraStream === null || screenStream === null || recordings !== null;
+function focusNextStep() {
+  const nextStep = [cameraButton, screenButton, recordButton].find((button) => {
+    if (button === cameraButton) {
+      return cameraStream === null;
+    }
+    if (button === screenButton) {
+      return screenStream === null;
+    }
+    return !button.disabled;
+  });
+  nextStep?.focus();
+}
+
+function stopStream(stream: MediaStream | null) {
+  stream?.getTracks().forEach((track) => track.stop());
 }
 
 function showElapsed(milliseconds: number) {
@@ -77,43 +108,54 @@ async function turnOnCamera() {
     });
     cameraPreview.srcObject = cameraStream;
     await cameraPreview.play();
-    cameraButton.disabled = true;
     announce(
       screenStream === null ? "Camera is on. Now choose a window to share." : "Ready to record.",
     );
   } catch (error) {
     announce(`The camera could not be turned on. ${describeError(error)}`);
   }
-  updateRecordButton();
+  updateControls();
+  focusNextStep();
+}
+
+function handleShareEnded(endedStream: MediaStream) {
+  // Only the current share matters; an earlier one may end after being replaced.
+  if (endedStream !== screenStream) {
+    return;
+  }
+  screenStream = null;
+  screenPreview.srcObject = null;
+
+  if (phase === "recording") {
+    void stopRecording("Window sharing ended, so the recording stopped. Saving the take.");
+    return;
+  }
+  if (phase === "setup") {
+    announce("Window sharing ended. Choose a window to share.");
+    updateControls();
+  }
 }
 
 async function chooseWindow() {
   try {
-    screenStream = await navigator.mediaDevices.getDisplayMedia({
+    const newStream = await navigator.mediaDevices.getDisplayMedia({
       video: { frameRate: { ideal: 30 } },
       audio: false,
     });
-    screenPreview.srcObject = screenStream;
-    await screenPreview.play();
-    screenButton.textContent = "Choose another window";
-    announce(cameraStream === null ? "Window chosen. Now turn on the camera." : "Ready to record.");
+    // Replacing a share stops the previous one, so it does not keep running.
+    const previousStream = screenStream;
+    screenStream = newStream;
+    stopStream(previousStream);
 
-    // Sharing can be stopped from the browser's own controls.
-    screenStream.getVideoTracks()[0]?.addEventListener("ended", () => {
-      if (recordings !== null) {
-        void stopRecording("Window sharing ended, so the recording stopped.");
-        return;
-      }
-      screenStream = null;
-      screenPreview.srcObject = null;
-      screenButton.textContent = "Choose window";
-      announce("Window sharing ended. Choose a window to share.");
-      updateRecordButton();
-    });
+    screenPreview.srcObject = newStream;
+    await screenPreview.play();
+    newStream.getVideoTracks()[0]?.addEventListener("ended", () => handleShareEnded(newStream));
+    announce(cameraStream === null ? "Window chosen. Now turn on the camera." : "Ready to record.");
   } catch (error) {
     announce(`No window was shared. ${describeError(error)}`);
   }
-  updateRecordButton();
+  updateControls();
+  focusNextStep();
 }
 
 function startTrackRecording(stream: MediaStream, mimeType: string): TrackRecording {
@@ -125,18 +167,42 @@ function startTrackRecording(stream: MediaStream, mimeType: string): TrackRecord
     }
   });
 
-  const startedAt = new Promise<number>((resolve) => {
-    recorder.addEventListener("start", (event) => resolve(event.timeStamp), { once: true });
+  // An error before the recorder starts would otherwise leave the save waiting forever.
+  const failed = new Promise<never>((_resolve, reject) => {
+    recorder.addEventListener(
+      "error",
+      (event) => reject((event as ErrorEvent).error ?? new Error("The recorder failed.")),
+      { once: true },
+    );
   });
-  const finished = new Promise<Blob>((resolve) => {
-    recorder.addEventListener("stop", () => resolve(new Blob(chunks, { type: mimeType })), {
-      once: true,
-    });
-  });
+  failed.catch(() => {});
+
+  const startedAt = Promise.race([
+    new Promise<number>((resolve) => {
+      recorder.addEventListener("start", (event) => resolve(event.timeStamp), { once: true });
+    }),
+    failed,
+  ]);
+  const finished = Promise.race([
+    new Promise<Blob>((resolve) => {
+      recorder.addEventListener("stop", () => resolve(new Blob(chunks, { type: mimeType })), {
+        once: true,
+      });
+    }),
+    failed,
+  ]);
 
   // A timeslice keeps memory use flat by handing over data every second.
   recorder.start(1000);
   return { recorder, startedAt, finished };
+}
+
+function stopRecorders(current: Partial<Record<Track, TrackRecording>>) {
+  for (const recording of Object.values(current)) {
+    if (recording.recorder.state !== "inactive") {
+      recording.recorder.stop();
+    }
+  }
 }
 
 function startRecording() {
@@ -149,14 +215,19 @@ function startRecording() {
     return;
   }
 
-  recordings = {
-    cam: startTrackRecording(cameraStream, cameraMimeType),
-    screen: startTrackRecording(screenStream, screenMimeType),
-  };
-  cameraButton.disabled = true;
-  screenButton.disabled = true;
-  recordButton.disabled = true;
-  stopButton.disabled = false;
+  const started: Partial<Record<Track, TrackRecording>> = {};
+  try {
+    started.cam = startTrackRecording(cameraStream, cameraMimeType);
+    started.screen = startTrackRecording(screenStream, screenMimeType);
+  } catch (error) {
+    stopRecorders(started);
+    announce(`The recording could not start. ${describeError(error)}`);
+    return;
+  }
+
+  recordings = { cam: started.cam, screen: started.screen };
+  phase = "recording";
+  updateControls();
   stopButton.focus();
   announce("Recording. Press Stop when you are done.");
 
@@ -167,13 +238,11 @@ function startRecording() {
     showElapsed(Math.min(recordedMs, maximumTakeMs));
     if (recordedMs >= maximumTakeMs) {
       void stopRecording(
-        "The take reached three minutes, the Shorts limit, so the recording stopped.",
+        "The take reached three minutes, the Shorts limit, so the recording stopped. Saving the take.",
       );
     }
   }, 250);
 }
-
-const trackNames: Record<Track, string> = { cam: "camera", screen: "screen" };
 
 async function upload(track: Track, recording: Blob) {
   // A busy computer can stop the encoder from producing anything before Stop.
@@ -191,16 +260,17 @@ async function upload(track: Track, recording: Blob) {
 }
 
 async function stopRecording(reason = "Saving the take.") {
-  if (recordings === null) {
+  // Stop, the end of the share and the three-minute limit can all ask to stop;
+  // only the first one saves the take.
+  if (phase !== "recording" || recordings === null) {
     return;
   }
   const current = recordings;
+  phase = "saving";
   window.clearInterval(timer);
-  disableAll();
+  updateControls();
   announce(reason);
-
-  current.cam.recorder.stop();
-  current.screen.recorder.stop();
+  stopRecorders(current);
 
   try {
     const [cameraStartedAt, screenStartedAt, cameraRecording, screenRecording] = await Promise.all([
@@ -223,36 +293,43 @@ async function stopRecording(reason = "Saving the take.") {
       throw new Error(await response.text());
     }
 
-    for (const stream of [cameraStream, screenStream]) {
-      stream?.getTracks().forEach((track) => track.stop());
-    }
+    phase = "saved";
+    stopStream(cameraStream);
+    stopStream(screenStream);
+    updateControls();
     announce("Saved. You can close this tab and return to the terminal.");
   } catch (error) {
-    // The camera and window stay connected, so the take can be recorded again.
+    // The camera, and the window if it is still shared, stay connected, so
+    // the take can be recorded again.
+    phase = "setup";
     recordings = null;
-    stopButton.disabled = true;
-    screenButton.disabled = false;
-    updateRecordButton();
+    updateControls();
+    focusNextStep();
     announce(`The take could not be saved. ${describeError(error)}`);
   }
 }
 
 function initialise() {
   if (token === null) {
-    disableAll();
+    phase = "saved";
+    updateControls();
+    stopButton.disabled = true;
     announce(
       "Open the recorder with short record. This page needs the address that command prints.",
     );
     return;
   }
   if (cameraMimeType === null || screenMimeType === null) {
-    disableAll();
+    phase = "saved";
+    updateControls();
+    stopButton.disabled = true;
     announce(
       "This browser cannot record WebM video. Open the address in Chrome or another Chromium browser.",
     );
     return;
   }
 
+  updateControls();
   cameraButton.addEventListener("click", () => void turnOnCamera());
   screenButton.addEventListener("click", () => void chooseWindow());
   recordButton.addEventListener("click", startRecording);

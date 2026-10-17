@@ -1,4 +1,4 @@
-import { join } from "node:path";
+import { resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import { parseArgs } from "node:util";
 import packageJson from "../package.json" with { type: "json" };
@@ -100,10 +100,12 @@ async function recordCommand(args: string[], io: CliIo, context: CliContext): Pr
     return 2;
   }
 
-  const shortsRoot =
-    parsed.values.root ??
-    context.environment.SHORTY_PANTS_SHORTS_ROOT ??
-    join(context.cwd, "shorts");
+  // An empty value counts as not given, and relative paths are resolved
+  // against the folder the command runs in.
+  const configuredRoot = [parsed.values.root, context.environment.SHORTY_PANTS_SHORTS_ROOT].find(
+    (value) => value !== undefined && value !== "",
+  );
+  const shortsRoot = resolve(context.cwd, configuredRoot ?? "shorts");
   const shouldOpen = !parsed.values["no-open"];
 
   // Ctrl+C stops waiting for the browser and shuts the server down.

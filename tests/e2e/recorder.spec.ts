@@ -116,3 +116,120 @@ test("explains a failed upload and lets the take be recorded again", async ({ pa
   await page.getByRole("button", { name: "Stop" }).click();
   await expect(page.getByRole("status")).toContainText("Saved", { timeout: 15_000 });
 });
+
+/** Ends the current window share the way the browser's own controls would. */
+async function endWindowShare(page: import("@playwright/test").Page) {
+  await page.evaluate(() => {
+    const preview = document.getElementById("screen-preview") as HTMLVideoElement;
+    const track = (preview.srcObject as MediaStream).getVideoTracks()[0]!;
+    track.stop();
+    track.dispatchEvent(new Event("ended"));
+  });
+}
+
+async function setUpSources(page: import("@playwright/test").Page) {
+  await page.goto(server.url);
+  await page.getByRole("button", { name: "Turn on camera" }).click();
+  await page.getByRole("button", { name: "Choose window" }).click();
+  await expect(page.getByRole("button", { name: "Start recording" })).toBeEnabled();
+}
+
+test("lays the page out with spacing between its parts", async ({ page }) => {
+  await page.goto(server.url);
+  const spacing = await page.locator("main").evaluate((main) => {
+    const style = getComputedStyle(main);
+    return { gap: style.rowGap, padding: style.paddingBlockStart };
+  });
+  expect(spacing).toEqual({ gap: "16px", padding: "16px" });
+});
+
+test("uploads a take once even when the share ends while it is being saved", async ({ page }) => {
+  const uploads: string[] = [];
+  let releaseCamera: () => void = () => {};
+  const cameraHeld = new Promise<void>((resolve) => {
+    releaseCamera = resolve;
+  });
+  page.on("request", (request) => {
+    if (request.url().includes("/api/takes/")) {
+      uploads.push(`${request.method()} ${new URL(request.url()).pathname}`);
+    }
+  });
+  await page.route("**/api/takes/cam", async (route) => {
+    await cameraHeld;
+    await route.continue();
+  });
+
+  await setUpSources(page);
+  await page.getByRole("button", { name: "Start recording" }).click();
+  await expect(page.locator("#elapsed")).toHaveText("0:01", { timeout: 10_000 });
+  await page.getByRole("button", { name: "Stop" }).click();
+  await expect.poll(() => uploads.length).toBe(1);
+
+  await endWindowShare(page);
+  releaseCamera();
+
+  await expect(page.getByRole("status")).toContainText("Saved", { timeout: 15_000 });
+  expect(uploads).toEqual(["PUT /api/takes/cam", "PUT /api/takes/screen", "POST /api/takes/done"]);
+});
+
+test("stops the previous share when another window is chosen", async ({ page }) => {
+  await setUpSources(page);
+  await page.evaluate(() => {
+    const preview = document.getElementById("screen-preview") as HTMLVideoElement;
+    (window as unknown as { firstShare: MediaStreamTrack }).firstShare = (
+      preview.srcObject as MediaStream
+    ).getVideoTracks()[0]!;
+  });
+
+  await page.getByRole("button", { name: "Choose another window" }).click();
+  const firstShareState = () =>
+    page.evaluate(
+      () => (window as unknown as { firstShare: MediaStreamTrack }).firstShare.readyState,
+    );
+  await expect.poll(firstShareState).toBe("ended");
+
+  // The old share ending later must not affect the new one.
+  await page.evaluate(() =>
+    (window as unknown as { firstShare: MediaStreamTrack }).firstShare.dispatchEvent(
+      new Event("ended"),
+    ),
+  );
+  await expect(page.getByRole("button", { name: "Start recording" })).toBeEnabled();
+});
+
+test("asks for a new window when the share ended during a take that could not be saved", async ({
+  page,
+}) => {
+  await page.route("**/api/takes/cam", (route) =>
+    route.fulfill({ status: 500, body: "Disk full." }),
+  );
+
+  await setUpSources(page);
+  await page.getByRole("button", { name: "Start recording" }).click();
+  await expect(page.locator("#elapsed")).toHaveText("0:01", { timeout: 10_000 });
+  await endWindowShare(page);
+
+  await expect(page.getByRole("status")).toContainText("The take could not be saved.");
+  await expect(page.getByRole("button", { name: "Start recording" })).toBeDisabled();
+  await expect(page.getByRole("button", { name: "Choose window" })).toBeEnabled();
+});
+
+test("keeps keyboard focus on a control through the whole take", async ({ page }) => {
+  await page.goto(server.url);
+  const focusedId = () => page.evaluate(() => document.activeElement?.id ?? "");
+
+  await page.getByRole("button", { name: "Turn on camera" }).focus();
+  await page.keyboard.press("Enter");
+  await expect.poll(focusedId).toBe("screen-button");
+
+  await page.keyboard.press("Enter");
+  await expect.poll(focusedId).toBe("record-button");
+
+  await page.keyboard.press("Enter");
+  await expect.poll(focusedId).toBe("stop-button");
+  await expect(page.locator("#elapsed")).toHaveText("0:01", { timeout: 10_000 });
+
+  await page.keyboard.press("Enter");
+  await expect(page.getByRole("status")).toContainText("Saved", { timeout: 15_000 });
+  expect(await focusedId()).toBe("stop-button");
+});
