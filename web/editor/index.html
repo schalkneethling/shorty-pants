@@ -38,7 +38,8 @@
           <section aria-labelledby="transcript-heading">
             <h2 id="transcript-heading">Transcript</h2>
             <p id="transcript-help">Select words, then press Delete to cut them. Press Delete again to bring them back. The arrow keys move between words, and Shift with an arrow key extends the selection.</p>
-            <div id="words" class="words" role="group" aria-labelledby="transcript-heading" aria-describedby="transcript-help"></div>
+            <!-- [html-validate-disable-next prefer-native-element -- a select with multiple shows a vertical list, and the transcript has to read as wrapping prose with struck-through cuts] -->
+            <div id="words" class="words" role="listbox" aria-multiselectable="true" aria-orientation="horizontal" aria-labelledby="transcript-heading" aria-describedby="transcript-help"></div>
           </section>
 
           <section aria-labelledby="trim-heading">

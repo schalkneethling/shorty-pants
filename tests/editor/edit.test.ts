@@ -12,6 +12,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, beforeEach, describe, expect, test } from "vite-plus/test";
 import { run, type CliContext } from "../../src/cli.ts";
+import { CommandFailedError } from "../../src/commands.ts";
 import { editShort } from "../../src/editor/edit.ts";
 import { createFakeCommands, type FakeCommands } from "../helpers/fake-commands.ts";
 
@@ -123,10 +124,26 @@ describe("short edit", () => {
           join(shortFolder, "takes", `${track}.webm`),
           "-c",
           "copy",
-          join(shortFolder, "takes", `${track}.preview.webm`),
+          join(shortFolder, "takes", `${track}.preview.partial.webm`),
         ],
       })),
     );
+    for (const track of ["cam", "screen"]) {
+      expect(existsSync(join(shortFolder, "takes", `${track}.preview.webm`))).toBe(true);
+      expect(existsSync(join(shortFolder, "takes", `${track}.preview.partial.webm`))).toBe(false);
+    }
+  });
+
+  test("leaves no preview behind when ffmpeg stops partway", async () => {
+    const stopsPartway: typeof commands.run = async (command, args) => {
+      writeFileSync(args.at(-1)!, "half a video");
+      throw new CommandFailedError(`${command} was interrupted`);
+    };
+    const { io, output } = createIo();
+    expect(await run(["edit", shortFolder], io, context({ runCommand: stopsPartway }))).toBe(1);
+    expect(output.stderr).toContain("interrupted");
+    expect(existsSync(join(shortFolder, "takes", "cam.preview.webm"))).toBe(false);
+    expect(existsSync(join(shortFolder, "takes", "cam.preview.partial.webm"))).toBe(false);
   });
 
   test("reuses preview copies that are newer than the recordings", async () => {

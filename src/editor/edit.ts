@@ -1,6 +1,6 @@
 import { randomBytes } from "node:crypto";
 import { existsSync } from "node:fs";
-import { readFile, stat, writeFile } from "node:fs/promises";
+import { readFile, rename, rm, stat, writeFile } from "node:fs/promises";
 import { join } from "node:path";
 import { CommandNotFoundError, type CommandRunner } from "../commands.ts";
 import { createShortProject } from "../edit/short-project-defaults.ts";
@@ -70,6 +70,9 @@ async function makeSeekablePreviews(
     if (await isUpToDate(preview, source)) {
       continue;
     }
+    // ffmpeg writes to a separate file that is renamed once it is complete,
+    // so an interrupted copy is never mistaken for an up-to-date preview.
+    const partialPreview = join(shortFolder, "takes", `${track}.preview.partial.webm`);
     try {
       await run("ffmpeg", [
         "-nostdin",
@@ -81,9 +84,11 @@ async function makeSeekablePreviews(
         source,
         "-c",
         "copy",
-        preview,
+        partialPreview,
       ]);
+      await rename(partialPreview, preview);
     } catch (error) {
+      await rm(partialPreview, { force: true });
       if (error instanceof CommandNotFoundError) {
         throw new ShortError("ffmpeg was not found. Install it with brew install ffmpeg.");
       }

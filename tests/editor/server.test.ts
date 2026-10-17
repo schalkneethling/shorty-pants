@@ -180,6 +180,21 @@ describe("PUT /api/short", () => {
 });
 
 describe("POST /api/done", () => {
+  test("refuses API requests for another host name, to block DNS rebinding", async () => {
+    const response = await rawRequest("/api/project", {
+      headers: { ...authorized, host: "evil.example" },
+    });
+    expect(response.status).toBe(403);
+  });
+
+  test("keeps the last of several saves that arrive together", async () => {
+    const responses = await Promise.all(
+      [400, 410, 420, 430].map((startMs) => saveShort({ trim: { startMs, endMs: 1900 } })),
+    );
+    expect(responses.map((response) => response.status)).toEqual([200, 200, 200, 200]);
+    expect([400, 410, 420, 430]).toContain(readShort().trim.startMs);
+  });
+
   test("resolves the done promise", async () => {
     const response = await rawRequest("/api/done", { method: "POST", headers: authorized });
     expect(response.status).toBe(204);
@@ -211,6 +226,29 @@ describe("media", () => {
     });
     expect(response.status).toBe(206);
     expect(response.bytes.toString()).toBe("cdef");
+  });
+
+  test("serves the last bytes for a suffix range", async () => {
+    const response = await rawRequest(`/media/${token}/cam.webm`, {
+      headers: { range: "bytes=-4" },
+    });
+    expect(response.status).toBe(206);
+    expect(response.headers["content-range"]).toBe(`bytes 12-15/${cameraPreview.length}`);
+    expect(response.bytes.toString()).toBe("cdef");
+  });
+
+  test("refuses a range it cannot read", async () => {
+    const response = await rawRequest(`/media/${token}/cam.webm`, {
+      headers: { range: "bytes=five-ten" },
+    });
+    expect(response.status).toBe(416);
+  });
+
+  test("refuses requests for another host name, to block DNS rebinding", async () => {
+    const response = await rawRequest(`/media/${token}/cam.webm`, {
+      headers: { host: "evil.example" },
+    });
+    expect(response.status).toBe(403);
   });
 
   test("refuses a range past the end of the file", async () => {

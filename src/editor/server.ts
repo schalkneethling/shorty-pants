@@ -94,14 +94,24 @@ export async function startEditorServer(options: EditorServerOptions): Promise<E
     return { recordedTakes, transcript, short };
   }
 
+  // Saves run one after another, so each one merges into the short.json that
+  // the save before it wrote, and two saves never write the same file at once.
+  let previousSave: Promise<unknown> = Promise.resolve();
+
   async function saveChanges(request: IncomingMessage, response: ServerResponse) {
     const changes = editorChangesSchema.safeParse(await readJsonBody(request, 1024 * 1024));
     if (!changes.success) {
       throw new HttpError(400, `The changes are not valid. ${changes.error.message}`);
     }
 
+    const saving = previousSave.then(() => mergeAndWrite(changes.data));
+    previousSave = saving.catch(() => {});
+    sendJson(response, 200, await saving);
+  }
+
+  async function mergeAndWrite(changes: z.infer<typeof editorChangesSchema>) {
     const { transcript, short } = await loadProject();
-    const merged = parseShortProject({ ...short, ...changes.data });
+    const merged = parseShortProject({ ...short, ...changes });
     if (!merged.success) {
       throw new HttpError(400, `The changes are not valid. ${merged.error.message}`);
     }
@@ -119,7 +129,7 @@ export async function startEditorServer(options: EditorServerOptions): Promise<E
     const temporaryPath = `${shortPath}.saving`;
     await writeFile(temporaryPath, `${JSON.stringify(updated, null, 2)}\n`);
     await rename(temporaryPath, shortPath);
-    sendJson(response, 200, updated);
+    return updated;
   }
 
   async function handleApi(request: IncomingMessage, response: ServerResponse, pathname: string) {

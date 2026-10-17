@@ -44,7 +44,7 @@ const cameraVideo = requireElement("camera-video", HTMLVideoElement);
 const screenVideo = requireElement("screen-video", HTMLVideoElement);
 const playButton = requireElement("play-button", HTMLButtonElement);
 const position = requireElement("position", HTMLTimeElement);
-const wordsGroup = requireElement("words", HTMLDivElement);
+const wordsList = requireElement("words", HTMLDivElement);
 const trimStartInput = requireElement("trim-start", HTMLInputElement);
 const trimEndInput = requireElement("trim-end", HTMLInputElement);
 const trimStartValue = requireElement("trim-start-value", HTMLSpanElement);
@@ -62,9 +62,10 @@ let keepRanges: KeepRange[] = [];
 let selection: number[] = [];
 let selectionAnchor: number | null = null;
 let focusIndex = 0;
-let wordButtons: HTMLButtonElement[] = [];
+let wordOptions: HTMLElement[] = [];
 let saveTimer: number | undefined;
-let pendingSave: Promise<void> = Promise.resolve();
+// Resolves to whether the latest save reached short.json.
+let pendingSave: Promise<boolean> = Promise.resolve(true);
 let isPlaying = false;
 
 function announce(message: string) {
@@ -105,18 +106,18 @@ function updateKeepRanges() {
 function updateWords() {
   const removed = removedRangesToIndexes(removedWords);
   const { words } = currentProject().transcript;
-  wordButtons.forEach((button, index) => {
+  wordOptions.forEach((option, index) => {
     const word = words[index]!;
     const isCut = removed.has(index);
     const isOutsideTrim = word.endMs <= trim.startMs || word.startMs >= trim.endMs;
-    button.setAttribute("aria-pressed", String(selection.includes(index)));
-    button.classList.toggle("is-cut", isCut);
-    button.classList.toggle("is-outside-trim", isOutsideTrim && !isCut);
-    button.tabIndex = index === focusIndex ? 0 : -1;
+    option.setAttribute("aria-selected", String(selection.includes(index)));
+    option.classList.toggle("is-cut", isCut);
+    option.classList.toggle("is-outside-trim", isOutsideTrim && !isCut);
+    option.tabIndex = index === focusIndex ? 0 : -1;
 
     // The visible line-through and dimming are repeated as text for screen readers.
     // Browsers put a space before the hidden note, so it reads as a parenthetical.
-    const note = button.querySelector(".visually-hidden")!;
+    const note = option.querySelector(".visually-hidden")!;
     note.textContent = isCut ? "(cut)" : isOutsideTrim ? "(outside the trim)" : "";
   });
 }
@@ -139,15 +140,17 @@ function update() {
   updateTrimInputs();
 }
 
-async function save() {
-  announce("Saving.");
+/** Saves the trim and the cuts, and resolves to whether short.json was updated. */
+async function save(): Promise<boolean> {
   try {
     await api("/short", { method: "PUT", body: JSON.stringify({ trim, removedWords }) });
-    announce("Saved.");
+    return true;
   } catch (error) {
+    // Only a failure is announced, so the status keeps describing the last edit.
     announce(
       `The changes could not be saved. ${error instanceof Error ? error.message : String(error)}`,
     );
+    return false;
   }
 }
 
@@ -158,20 +161,22 @@ function scheduleSave() {
   }, saveDelayMs);
 }
 
-/** Saves a change that is still waiting for its delay, then waits for every save. */
-async function flushSaves() {
-  if (saveTimer !== undefined) {
-    window.clearTimeout(saveTimer);
-    saveTimer = undefined;
-    pendingSave = pendingSave.then(save);
-  }
-  await pendingSave;
+/**
+ * Saves the current edits once more, after any save still in flight, and
+ * resolves to whether they reached short.json. Saving again, rather than
+ * only waiting, also retries a save that failed earlier.
+ */
+function saveNow(): Promise<boolean> {
+  window.clearTimeout(saveTimer);
+  saveTimer = undefined;
+  pendingSave = pendingSave.then(save);
+  return pendingSave;
 }
 
 function moveFocus(index: number) {
   focusIndex = index;
   updateWords();
-  wordButtons[index]?.focus();
+  wordOptions[index]?.focus();
 }
 
 function seekTo(cameraMs: number) {
@@ -187,9 +192,9 @@ function showPosition(cameraMs: number) {
   position.dateTime = `PT${Math.floor(shortMs / 1000)}S`;
 
   const { words } = currentProject().transcript;
-  wordButtons.forEach((button, index) => {
+  wordOptions.forEach((option, index) => {
     const word = words[index]!;
-    button.classList.toggle(
+    option.classList.toggle(
       "is-playing",
       isPlaying && cameraMs >= word.startMs && cameraMs < word.endMs,
     );
@@ -209,18 +214,34 @@ function selectWord(index: number, extend: boolean) {
   }
 }
 
+/** Describes a cut or a restore for the status, such as "Cut positioning." */
+function describeToggle(target: number[], isNowCut: boolean): string {
+  const action = isNowCut ? "Cut" : "Restored";
+  if (target.length === 1) {
+    return `${action} ${currentProject().transcript.words[target[0]!]!.text}.`;
+  }
+  return `${action} ${target.length} words.`;
+}
+
 function toggleCut() {
   const target = selection.length > 0 ? selection : [focusIndex];
   removedWords = toggleRemoved(removedWords, target);
+  const isNowCut = removedRangesToIndexes(removedWords).has(target[0]!);
   update();
+  announce(describeToggle(target, isNowCut));
   scheduleSave();
 }
 
 function handleWordKeys(event: KeyboardEvent) {
-  const wordCount = wordButtons.length;
+  const wordCount = wordOptions.length;
   if (event.key === "Delete" || event.key === "Backspace") {
     event.preventDefault();
     toggleCut();
+    return;
+  }
+  if (event.key === " " || event.key === "Enter") {
+    event.preventDefault();
+    selectWord(focusIndex, event.shiftKey);
     return;
   }
   if (event.key === "Escape") {
@@ -238,25 +259,35 @@ function handleWordKeys(event: KeyboardEvent) {
   if (event.shiftKey) {
     selectionAnchor ??= focusIndex;
     selection = selectionBetween(selectionAnchor, next);
+  } else {
+    // As in a text editor, moving without Shift moves the selection along,
+    // so Delete always acts on the word in focus.
+    selection = [next];
+    selectionAnchor = next;
   }
   moveFocus(next);
 }
 
+/**
+ * The words are the options of a multi-select listbox. A listbox, unlike a
+ * group of buttons, tells screen readers that the arrow keys belong to the
+ * page, and it has a selected state for every word.
+ */
 function renderWords() {
   const { words } = currentProject().transcript;
-  wordButtons = words.map((word, index) => {
-    const button = document.createElement("button");
-    button.type = "button";
-    button.className = "word";
-    button.append(word.text);
+  wordOptions = words.map((word, index) => {
+    const option = document.createElement("span");
+    option.setAttribute("role", "option");
+    option.className = "word";
+    option.append(word.text);
     const note = document.createElement("span");
     note.className = "visually-hidden";
-    button.append(note);
-    button.addEventListener("click", (event) => selectWord(index, event.shiftKey));
-    return button;
+    option.append(note);
+    option.addEventListener("click", (event) => selectWord(index, event.shiftKey));
+    return option;
   });
-  wordsGroup.replaceChildren(...wordButtons);
-  wordsGroup.addEventListener("keydown", handleWordKeys);
+  wordsList.replaceChildren(...wordOptions);
+  wordsList.addEventListener("keydown", handleWordKeys);
 }
 
 function changeTrim(edge: "start" | "end") {
@@ -278,6 +309,30 @@ function stopPlayback() {
   showPosition(cameraVideo.currentTime * 1000);
 }
 
+/**
+ * The screen recording starts screenOffsetMs after the camera. Before that
+ * moment the screen video holds its first frame; after it, the screen video
+ * plays and is moved back into step when it drifts.
+ */
+function keepScreenInStep(cameraMs: number, screenOffsetMs: number) {
+  const isBeforeScreenStarts = cameraMs < screenOffsetMs;
+  if (isBeforeScreenStarts) {
+    if (!screenVideo.paused) {
+      screenVideo.pause();
+    }
+    return;
+  }
+  if (screenVideo.paused) {
+    // A failed or interrupted play only leaves the screen on its last frame,
+    // and the next frame tries again, so the error is not announced.
+    screenVideo.play().catch(() => {});
+  }
+  const screenTargetMs = screenTimeMs(cameraMs, screenOffsetMs);
+  if (Math.abs(screenVideo.currentTime * 1000 - screenTargetMs) > maximumDriftMs) {
+    screenVideo.currentTime = screenTargetMs / 1000;
+  }
+}
+
 /** Runs every frame while playing: jumps over cuts and keeps the screen in step. */
 function followPlayback() {
   if (!isPlaying) {
@@ -294,10 +349,7 @@ function followPlayback() {
   if (playableMs > cameraMs) {
     seekTo(playableMs);
   } else {
-    const screenTargetMs = screenTimeMs(cameraMs, screenOffsetMs);
-    if (Math.abs(screenVideo.currentTime * 1000 - screenTargetMs) > maximumDriftMs) {
-      screenVideo.currentTime = screenTargetMs / 1000;
-    }
+    keepScreenInStep(cameraMs, screenOffsetMs);
     showPosition(cameraMs);
   }
   requestAnimationFrame(followPlayback);
@@ -316,6 +368,12 @@ async function startPlayback() {
   try {
     await Promise.all([cameraVideo.play(), screenVideo.play()]);
   } catch (error) {
+    // Pause while play() is still starting rejects it with an AbortError,
+    // which is not a problem with the preview.
+    const isInterruptedByPause = error instanceof DOMException && error.name === "AbortError";
+    if (isInterruptedByPause) {
+      return;
+    }
     stopPlayback();
     announce(
       `The preview could not play. ${error instanceof Error ? error.message : String(error)}`,
@@ -329,7 +387,14 @@ async function finishEditing() {
   stopPlayback();
   doneButton.disabled = true;
   try {
-    await flushSaves();
+    const isSaved = await saveNow();
+    if (!isSaved) {
+      doneButton.disabled = false;
+      announce(
+        "The latest changes could not be saved, so the editor stays open. Press Done to try again.",
+      );
+      return;
+    }
     await api("/done", { method: "POST" });
     announce("Done. Your edits are saved. You can close this tab and return to the terminal.");
   } catch (error) {
@@ -378,6 +443,13 @@ async function initialise() {
     }
   });
   doneButton.addEventListener("click", () => void finishEditing());
+  // Browsers stop animation frames in a hidden tab, so the cuts could not be
+  // skipped there; the preview pauses instead.
+  document.addEventListener("visibilitychange", () => {
+    if (document.hidden && isPlaying) {
+      stopPlayback();
+    }
+  });
   playButton.disabled = false;
   doneButton.disabled = false;
   announce("Ready. Select words to cut them, or move the trim handles.");

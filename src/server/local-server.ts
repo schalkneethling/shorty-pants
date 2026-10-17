@@ -43,15 +43,20 @@ export function sendJson(response: ServerResponse, status: number, value: unknow
 }
 
 export async function readJsonBody(request: IncomingMessage, maxBytes: number): Promise<unknown> {
-  let text = "";
+  // The chunks are joined before decoding, because a character can be split
+  // across two of them.
+  const chunks: Buffer[] = [];
+  let byteCount = 0;
   for await (const chunk of request) {
-    text += chunk;
-    if (text.length > maxBytes) {
+    const bytes = Buffer.isBuffer(chunk) ? chunk : Buffer.from(String(chunk));
+    byteCount += bytes.byteLength;
+    if (byteCount > maxBytes) {
       throw new HttpError(413, "The request body is too large.");
     }
+    chunks.push(bytes);
   }
   try {
-    return JSON.parse(text);
+    return JSON.parse(Buffer.concat(chunks).toString("utf8"));
   } catch {
     throw new HttpError(400, "The request body is not valid JSON.");
   }

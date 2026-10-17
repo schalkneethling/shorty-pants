@@ -6,7 +6,7 @@
 
 .frame {
   aspect-ratio: 9 / 16;
-  background-color: #000;
+  background-color: var(--color-frame);
   display: grid;
   inline-size: 100%;
   overflow: hidden;

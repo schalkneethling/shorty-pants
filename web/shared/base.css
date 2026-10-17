@@ -30,6 +30,18 @@
   syntax: "<color>";
 }
 
+@property --color-muted-text {
+  inherits: true;
+  initial-value: #57534e;
+  syntax: "<color>";
+}
+
+@property --color-frame {
+  inherits: true;
+  initial-value: #000;
+  syntax: "<color>";
+}
+
 /* A registered initial value must not depend on other values, so it is
    given in px; rem would make the browser drop the whole registration. */
 @property --space {
@@ -40,7 +52,10 @@
 
 :root {
   --color-accent: light-dark(#2e1065, #c4b5fd);
+  /* The behind-the-video color of the Shorts frame, in both color schemes. */
+  --color-frame: #000;
   --color-muted-surface: light-dark(#f5f3ff, #1e1b2e);
+  --color-muted-text: light-dark(#57534e, #a8a29e);
   --color-on-accent: light-dark(#fff, #1c1917);
   --color-surface: light-dark(#fff, #121016);
   --color-text: light-dark(#1c1917, #f5f5f4);
@@ -91,7 +106,9 @@ button[aria-disabled="true"] {
   opacity: 0.5;
 }
 
-button:focus-visible {
+button:focus-visible,
+input:focus-visible,
+[role="option"]:focus-visible {
   outline: 0.1875rem solid var(--color-accent);
   outline-offset: 0.1875rem;
 }
@@ -100,7 +117,11 @@ input[type="range"] {
   accent-color: var(--color-accent);
 }
 
-input:focus-visible {
-  outline: 0.1875rem solid var(--color-accent);
-  outline-offset: 0.1875rem;
+.visually-hidden {
+  block-size: 1px;
+  clip-path: inset(50%);
+  inline-size: 1px;
+  overflow: hidden;
+  position: absolute;
+  white-space: nowrap;
 }
