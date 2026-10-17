@@ -4,6 +4,7 @@ import { join } from "node:path";
 import { afterEach, beforeEach, describe, expect, test } from "vite-plus/test";
 import { run, type CliContext } from "../../src/cli.ts";
 import { recordShort } from "../../src/recorder/record.ts";
+import { createFakeCommands } from "../helpers/fake-commands.ts";
 
 let workspace: string;
 let webRoot: string;
@@ -49,6 +50,11 @@ function createContext(overrides: Partial<CliContext> = {}) {
     cwd: workspace,
     now: () => new Date(2026, 9, 17, 13, 45),
     environment: {},
+    // No model in this home folder, so short record skips transcription.
+    homeDirectory: workspace,
+    runCommand: async () => {
+      throw new Error("No command should run without a model.");
+    },
     webRoot,
     openUrl: async (url) => {
       opened.push(url);
@@ -171,6 +177,73 @@ describe("short record", () => {
     const { context } = createContext();
     expect(await run(["record", "--root", "not-a-folder"], io, context)).toBe(1);
     expect(output.stderr).toContain("is not a folder");
+  });
+
+  test("says how to transcribe the take when no whisper model is set up", async () => {
+    const { io, output } = createIo();
+    const { context } = createContext();
+    expect(await run(["record", "Scroll"], io, context)).toBe(0);
+    expect(output.stdout).toContain("short transcribe");
+  });
+
+  test("transcribes the take right away when a whisper model is set up", async () => {
+    const modelPath = join(workspace, "ggml-small.en.bin");
+    writeFileSync(modelPath, "model");
+    const commands = createFakeCommands();
+    const { io, output } = createIo();
+    const { context } = createContext({
+      environment: { SHORTY_PANTS_WHISPER_MODEL: modelPath },
+      runCommand: commands.run,
+    });
+
+    expect(await run(["record", "Scroll"], io, context)).toBe(0);
+    expect(output.stdout).toContain("Transcribed 6 words");
+    expect(existsSync(join(workspace, "shorts", "2026-10-17-scroll", "transcript.json"))).toBe(
+      true,
+    );
+  });
+
+  test("keeps the take and exits with 0 when transcription fails", async () => {
+    const modelPath = join(workspace, "ggml-small.en.bin");
+    writeFileSync(modelPath, "model");
+    const commands = createFakeCommands({ missing: ["whisper-cli"] });
+    const { io, output } = createIo();
+    const { context } = createContext({
+      environment: { SHORTY_PANTS_WHISPER_MODEL: modelPath },
+      runCommand: commands.run,
+    });
+
+    expect(await run(["record", "Scroll"], io, context)).toBe(0);
+    expect(output.stdout).toContain("Saved the take");
+    expect(output.stderr).toContain("whisper-cli was not found");
+    expect(output.stderr).toContain("short transcribe");
+  });
+
+  test("prints its usage for --help without starting the recorder", async () => {
+    const { io, output } = createIo();
+    const { context, opened } = createContext();
+    expect(await run(["record", "--help"], io, context)).toBe(0);
+    expect(output.stdout).toContain("Usage: short record");
+    expect(opened).toHaveLength(0);
+  });
+
+  test("lets Ctrl+C stop the command while the saved take is transcribed", async () => {
+    const modelPath = join(workspace, "ggml-small.en.bin");
+    writeFileSync(modelPath, "model");
+    const commands = createFakeCommands();
+    const listenersBefore = process.listenerCount("SIGINT");
+    let listenersDuringTranscription = -1;
+    const { io } = createIo();
+    const { context } = createContext({
+      environment: { SHORTY_PANTS_WHISPER_MODEL: modelPath },
+      runCommand: async (command, args) => {
+        listenersDuringTranscription = process.listenerCount("SIGINT");
+        return commands.run(command, args);
+      },
+    });
+
+    await run(["record", "Scroll"], io, context);
+    expect(listenersDuringTranscription).toBe(listenersBefore);
   });
 
   test("reports a missing recorder page", async () => {
