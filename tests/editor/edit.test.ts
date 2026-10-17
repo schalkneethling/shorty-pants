@@ -14,6 +14,7 @@ import { afterEach, beforeEach, describe, expect, test } from "vite-plus/test";
 import { run, type CliContext } from "../../src/cli.ts";
 import { CommandFailedError } from "../../src/commands.ts";
 import { editShort } from "../../src/editor/edit.ts";
+import { defaultPreset } from "../../src/schemas/preset.ts";
 import { createFakeCommands, type FakeCommands } from "../helpers/fake-commands.ts";
 
 let workspace: string;
@@ -171,6 +172,18 @@ describe("short edit", () => {
     );
     expect(output.stdout).toContain("1 cut");
     expect(output.stdout).toContain("The short is 0:01 long");
+  });
+
+  test("starts a new short.json from the preset in the shorts root", async () => {
+    writeFileSync(
+      join(workspace, "shorts", "preset.json"),
+      JSON.stringify({ ...defaultPreset, pauseThresholdMs: 950, defaultLayout: "face" }),
+    );
+    const { io } = createIo();
+    await run(["edit", shortFolder], io, context());
+    const saved = JSON.parse(readFileSync(join(shortFolder, "short.json"), "utf8"));
+    expect(saved.pauseThresholdMs).toBe(950);
+    expect(saved.segments).toEqual([{ fromWord: 0, layout: "face" }]);
   });
 
   test("keeps an existing short.json", async () => {

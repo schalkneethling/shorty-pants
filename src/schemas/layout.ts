@@ -1,6 +1,6 @@
 import { z } from "zod";
+import { layoutNames } from "./layout-names.ts";
 
-/** The three layouts a segment can use. */
-export const layoutSchema = z.enum(["split", "face", "circle"]);
+export const layoutSchema = z.enum(layoutNames);
 
-export type Layout = z.infer<typeof layoutSchema>;
+export type { Layout } from "./layout-names.ts";

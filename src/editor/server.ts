@@ -5,6 +5,7 @@ import { join } from "node:path";
 import { pipeline } from "node:stream/promises";
 import { z } from "zod";
 import { parseRecordedTakes } from "../schemas/recorded-takes.ts";
+import type { Preset } from "../schemas/preset.ts";
 import { parseShortProject, type ShortProject } from "../schemas/short-project.ts";
 import { parseTranscript } from "../schemas/transcript.ts";
 import {
@@ -15,14 +16,32 @@ import {
   startLocalServer,
 } from "../server/local-server.ts";
 
-// The parts of short.json the editor changes. Anything else in a request is refused.
+// The parts of short.json the editor changes. Anything else in a request is
+// refused. The values are checked in full once they are merged into short.json.
 const editorChangesSchema = z
   .object({
-    trim: z.object({ startMs: z.number().int(), endMs: z.number().int() }).optional(),
-    removedWords: z.array(z.tuple([z.number().int(), z.number().int()])).optional(),
-    pauseThresholdMs: z.number().int().optional(),
+    trim: z.unknown().optional(),
+    removedWords: z.unknown().optional(),
+    pauseThresholdMs: z.unknown().optional(),
+    // null removes the headline or the crop.
+    headline: z.unknown().optional(),
+    screenCrop: z.unknown().optional(),
+    segments: z.unknown().optional(),
   })
   .strict();
+
+type EditorChanges = z.infer<typeof editorChangesSchema>;
+
+/** short.json with the changes applied; a change of null removes that field. */
+function applyChanges(short: ShortProject, changes: EditorChanges): Record<string, unknown> {
+  const merged: Record<string, unknown> = { ...short, ...changes };
+  for (const [field, value] of Object.entries(changes)) {
+    if (value === null) {
+      delete merged[field];
+    }
+  }
+  return merged;
+}
 
 // The seekable copies that short edit makes of the recordings.
 const previewFiles: Record<string, string> = {
@@ -34,6 +53,8 @@ export interface EditorServerOptions {
   shortFolder: string;
   webRoot: string;
   token: string;
+  // Sent to the page for the caption style and the safe zones.
+  preset: Preset;
   port?: number;
 }
 
@@ -109,9 +130,9 @@ export async function startEditorServer(options: EditorServerOptions): Promise<E
     sendJson(response, 200, await saving);
   }
 
-  async function mergeAndWrite(changes: z.infer<typeof editorChangesSchema>) {
+  async function mergeAndWrite(changes: EditorChanges) {
     const { transcript, short } = await loadProject();
-    const merged = parseShortProject({ ...short, ...changes });
+    const merged = parseShortProject(applyChanges(short, changes));
     if (!merged.success) {
       throw new HttpError(400, `The changes are not valid. ${merged.error.message}`);
     }
@@ -122,6 +143,12 @@ export async function startEditorServer(options: EditorServerOptions): Promise<E
     const lastWordIndex = transcript.words.length - 1;
     if (updated.removedWords.some(([, toWord]) => toWord > lastWordIndex)) {
       throw new HttpError(400, "The cuts refer to words that are not in the transcript.");
+    }
+    const hasSegmentPastLastWord = updated.segments.some(
+      (segment) => segment.fromWord > 0 && segment.fromWord > lastWordIndex,
+    );
+    if (hasSegmentPastLastWord) {
+      throw new HttpError(400, "A layout segment starts after the last word of the transcript.");
     }
 
     // Writing a temporary file and renaming it means a failed save never
@@ -137,6 +164,7 @@ export async function startEditorServer(options: EditorServerOptions): Promise<E
       const project = await loadProject();
       sendJson(response, 200, {
         ...project,
+        preset: options.preset,
         media: { cam: `${mediaPath}cam.webm`, screen: `${mediaPath}screen.webm` },
       });
       return;

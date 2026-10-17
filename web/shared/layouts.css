@@ -1,33 +1,79 @@
 /*
- * The layouts of the 1080 × 1920 Shorts frame. The editor preview uses them
- * now, and the render will use the same rules, so the preview shows what
- * the render produces.
+ * The 1080 × 1920 Shorts frame. Where each part goes is computed in
+ * src/edit/layout-geometry.ts, the same numbers the render uses, and handed
+ * to this CSS as custom properties in frame pixels. This file only turns
+ * frame pixels into the size the frame is drawn at.
  */
+
+@property --x {
+  inherits: false;
+  initial-value: 0;
+  syntax: "<number>";
+}
+
+@property --y {
+  inherits: false;
+  initial-value: 0;
+  syntax: "<number>";
+}
+
+@property --width {
+  inherits: false;
+  initial-value: 0;
+  syntax: "<number>";
+}
+
+@property --height {
+  inherits: false;
+  initial-value: 0;
+  syntax: "<number>";
+}
 
 .frame {
   aspect-ratio: 9 / 16;
   background-color: var(--color-frame);
-  display: grid;
+  container-type: inline-size;
   inline-size: 100%;
+  overflow: hidden;
+  position: relative;
+
+  /* One frame pixel. This stays unregistered on purpose: a registered length
+     would be computed here, where 100cqi refers to the page rather than to
+     the frame, while an unregistered one is computed in each child. */
+  --frame-pixel: calc(100cqi / 1080);
+}
+
+/* Anything placed with --x, --y, --width and --height in frame pixels. */
+.slot,
+.headline,
+.captions {
+  block-size: calc(var(--height) * var(--frame-pixel));
+  inline-size: calc(var(--width) * var(--frame-pixel));
+  inset-block-start: calc(var(--y) * var(--frame-pixel));
+  inset-inline-start: calc(var(--x) * var(--frame-pixel));
+  position: absolute;
+}
+
+.slot {
   overflow: hidden;
 }
 
-.frame video {
-  block-size: 100%;
+.slot[hidden] {
+  display: none;
+}
+
+.slot.is-circle {
+  border-radius: 50%;
+}
+
+/* The whole source video, scaled and moved so that its crop fills the slot. */
+.slot video {
+  block-size: calc(var(--height) * var(--frame-pixel));
   display: block;
-  inline-size: 100%;
-  min-block-size: 0;
-}
-
-/* Split: the shared window on top, the camera below. */
-.layout-split {
-  grid-template-rows: 55fr 45fr;
-}
-
-.layout-split .frame-screen {
-  object-fit: contain;
-}
-
-.layout-split .frame-camera {
-  object-fit: cover;
+  inline-size: calc(var(--width) * var(--frame-pixel));
+  inset-block-start: calc(var(--y) * var(--frame-pixel));
+  inset-inline-start: calc(var(--x) * var(--frame-pixel));
+  max-inline-size: none;
+  object-fit: fill;
+  position: absolute;
 }

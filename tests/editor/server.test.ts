@@ -4,6 +4,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, beforeEach, describe, expect, test } from "vite-plus/test";
 import { startEditorServer, type EditorServer } from "../../src/editor/server.ts";
+import { defaultPreset } from "../../src/schemas/preset.ts";
 
 const token = "editor-token-0123456789";
 const cameraPreview = Buffer.from("0123456789abcdef");
@@ -98,7 +99,7 @@ beforeEach(async () => {
   writeFileSync(join(shortFolder, "takes", "cam.preview.webm"), cameraPreview);
   writeFileSync(join(shortFolder, "takes", "screen.preview.webm"), "screen");
 
-  server = await startEditorServer({ shortFolder, webRoot, token });
+  server = await startEditorServer({ shortFolder, webRoot, token, preset: defaultPreset });
 });
 
 afterEach(async () => {
@@ -128,6 +129,7 @@ describe("GET /api/project", () => {
       recordedTakes,
       transcript,
       short: shortProject,
+      preset: defaultPreset,
       media: {
         cam: `/media/${token}/cam.webm`,
         screen: `/media/${token}/screen.webm`,
@@ -170,6 +172,42 @@ describe("PUT /api/short", () => {
   test("refuses cuts of words that do not exist", async () => {
     const response = await saveShort({ removedWords: [[2, 3]] });
     expect(response.status).toBe(400);
+  });
+
+  test("saves the headline, the screen crop and the segments", async () => {
+    const changes = {
+      headline: { text: "Anchors ignore scroll", accent: "scroll" },
+      screenCrop: { x: 100, y: 50, width: 640, height: 900 },
+      segments: [
+        { fromWord: 0, layout: "face" },
+        { fromWord: 2, layout: "circle" },
+      ],
+    };
+    const response = await saveShort(changes);
+    expect(response.status).toBe(200);
+    expect(readShort()).toEqual({ ...shortProject, ...changes });
+  });
+
+  test("removes the screen crop when it is set to null", async () => {
+    await saveShort({ screenCrop: { x: 0, y: 0, width: 640, height: 900 } });
+    await saveShort({ screenCrop: null });
+    expect(readShort()).not.toHaveProperty("screenCrop");
+  });
+
+  test("refuses an accent that is not a word of the headline", async () => {
+    const response = await saveShort({ headline: { text: "Anchors ignore scroll", accent: "x" } });
+    expect(response.status).toBe(400);
+  });
+
+  test("refuses a segment that starts after the last word", async () => {
+    const response = await saveShort({
+      segments: [
+        { fromWord: 0, layout: "split" },
+        { fromWord: 3, layout: "face" },
+      ],
+    });
+    expect(response.status).toBe(400);
+    expect(readShort()).toEqual(shortProject);
   });
 
   test("refuses fields the editor does not own", async () => {

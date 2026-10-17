@@ -10,6 +10,8 @@
     <!-- [html-validate-disable-next require-sri -- served from 127.0.0.1 by the editor server, not from a CDN] -->
     <link rel="stylesheet" href="../shared/layouts.css">
     <!-- [html-validate-disable-next require-sri -- served from 127.0.0.1 by the editor server, not from a CDN] -->
+    <link rel="stylesheet" href="../shared/overlays.css">
+    <!-- [html-validate-disable-next require-sri -- served from 127.0.0.1 by the editor server, not from a CDN] -->
     <link rel="stylesheet" href="./editor.css">
     <!-- [html-validate-disable-next require-sri -- served from 127.0.0.1 by the editor server, not from a CDN] -->
     <script type="module" src="./editor.js"></script>
@@ -24,14 +26,33 @@
       <div class="workspace">
         <section class="preview" aria-labelledby="preview-heading">
           <h2 id="preview-heading">Preview</h2>
-          <div class="frame layout-split">
-            <video id="screen-video" class="frame-screen" muted playsinline preload="auto"></video>
-            <video id="camera-video" class="frame-camera" playsinline preload="auto"></video>
+          <div id="preview-frame" class="frame" data-layout="split">
+            <div id="screen-slot" class="slot">
+              <video id="screen-video" muted playsinline preload="auto"></video>
+            </div>
+            <div id="camera-slot" class="slot">
+              <video id="camera-video" playsinline preload="auto"></video>
+            </div>
+            <!-- The overlays repeat the headline field and the transcript, so screen readers skip them. -->
+            <div class="overlays" aria-hidden="true">
+              <p id="headline-preview" class="headline" hidden></p>
+              <p id="captions-preview" class="captions" hidden></p>
+              <div id="safe-zones" class="safe-zones" hidden>
+                <div class="safe-zone safe-zone-top"></div>
+                <div class="safe-zone safe-zone-bottom"></div>
+                <div class="safe-zone safe-zone-left"></div>
+                <div class="safe-zone safe-zone-right"></div>
+              </div>
+            </div>
           </div>
           <div class="transport">
             <button type="button" id="play-button" disabled>Play</button>
             <p>At <time id="position" datetime="PT0S">0:00</time> in the short</p>
           </div>
+          <p class="checkbox-field">
+            <input type="checkbox" id="safe-zones-toggle">
+            <label for="safe-zones-toggle">Show safe zones</label>
+          </p>
         </section>
 
         <div class="controls">
@@ -41,6 +62,22 @@
             <!-- [html-validate-disable-next prefer-native-element -- a select with multiple shows a vertical list, and the transcript has to read as wrapping prose with struck-through cuts] -->
             <div id="words" class="words" role="listbox" aria-multiselectable="true" aria-orientation="horizontal" aria-labelledby="transcript-heading" aria-describedby="transcript-help"></div>
           </section>
+
+          <fieldset id="layout-choice" class="layout-choice" disabled>
+            <legend>Layout for the selected words</legend>
+            <p class="radio-field">
+              <input type="radio" id="layout-split" name="layout" value="split" checked>
+              <label for="layout-split">Split</label>
+            </p>
+            <p class="radio-field">
+              <input type="radio" id="layout-face" name="layout" value="face">
+              <label for="layout-face">Face</label>
+            </p>
+            <p class="radio-field">
+              <input type="radio" id="layout-circle" name="layout" value="circle">
+              <label for="layout-circle">Circle cam</label>
+            </p>
+          </fieldset>
 
           <section aria-labelledby="trim-heading">
             <h2 id="trim-heading">Trim</h2>
@@ -53,6 +90,32 @@
               <span id="trim-end-value" aria-hidden="true">0:00.0</span>
             </div>
           </section>
+
+          <section aria-labelledby="headline-heading">
+            <h2 id="headline-heading">Headline</h2>
+            <div class="headline-fields">
+              <label for="headline-text">Headline</label>
+              <input type="text" id="headline-text" maxlength="80" autocomplete="off" disabled>
+              <label for="headline-accent">Accent word</label>
+              <select id="headline-accent" disabled></select>
+            </div>
+          </section>
+
+          <fieldset id="screen-crop" class="screen-crop" disabled>
+            <legend>Screen crop</legend>
+            <p id="screen-crop-help">In pixels of the shared window. The crop fills the window's part of the layout.</p>
+            <div class="crop-fields">
+              <label for="crop-x">Left</label>
+              <input type="number" id="crop-x" min="0" step="1" value="0" aria-describedby="screen-crop-help">
+              <label for="crop-y">Top</label>
+              <input type="number" id="crop-y" min="0" step="1" value="0" aria-describedby="screen-crop-help">
+              <label for="crop-width">Width</label>
+              <input type="number" id="crop-width" min="1" step="1" value="1" aria-describedby="screen-crop-help">
+              <label for="crop-height">Height</label>
+              <input type="number" id="crop-height" min="1" step="1" value="1" aria-describedby="screen-crop-help">
+            </div>
+            <button type="button" id="crop-reset">Reset crop</button>
+          </fieldset>
 
           <button type="button" id="done-button" class="primary" disabled>Done</button>
         </div>

@@ -84,3 +84,32 @@
 .trim span {
   font-variant-numeric: tabular-nums;
 }
+
+.layout-choice {
+  grid-auto-flow: column;
+  justify-content: start;
+}
+
+.headline-fields,
+.crop-fields {
+  align-items: center;
+  display: grid;
+  gap: calc(var(--space) / 2) var(--space);
+  grid-template-columns: auto minmax(8rem, 1fr);
+  inline-size: 100%;
+  margin-block-start: calc(var(--space) / 2);
+}
+
+.screen-crop p {
+  margin: 0;
+}
+
+.screen-crop button {
+  justify-self: start;
+}
+
+/* A bar before the first word of each later layout segment. */
+.word.starts-layout {
+  border-inline-start-color: var(--color-accent);
+  border-inline-start-width: 0.25rem;
+}
