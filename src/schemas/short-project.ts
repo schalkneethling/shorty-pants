@@ -6,7 +6,7 @@ const wordIndex = z.number().int().nonnegative();
 const pixels = z.number().int().nonnegative();
 const positivePixels = z.number().int().positive();
 
-const takesSchema = z.object({
+export const takesSchema = z.object({
   cam: z.string().min(1),
   screen: z.string().min(1),
   // Negative when the screen recorder started before the camera recorder.

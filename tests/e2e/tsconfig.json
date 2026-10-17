@@ -1,0 +1,8 @@
+{
+  "extends": "../../tsconfig.json",
+  "compilerOptions": {
+    // Code passed to page.evaluate runs in the browser.
+    "lib": ["es2023", "dom", "dom.iterable"]
+  },
+  "include": ["."]
+}

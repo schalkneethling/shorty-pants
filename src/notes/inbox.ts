@@ -4,7 +4,7 @@ import { basename, dirname, join } from "node:path";
 import { ShortError } from "../errors.ts";
 import { git, GitError, tryGit, type GitResult } from "../git.ts";
 import { noteIdSchema, type NoteFrontMatter } from "../schemas/note.ts";
-import { createNoteId } from "./note-id.ts";
+import { createDatedId } from "../dated-id.ts";
 import { parseNoteFile, serializeNoteFile } from "./note-file.ts";
 
 const shortsFolder = ".shorts";
@@ -156,7 +156,7 @@ export async function captureNote({
   await excludeShortsFolder(location);
 
   const createdAt = now();
-  const id = createNoteId(title, createdAt, await takenNoteIds(location));
+  const id = createDatedId(title, createdAt, await takenNoteIds(location));
   const commit = await currentCommit(location.workTreeRoot);
   const message = `short note ${id}`;
 

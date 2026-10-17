@@ -1,0 +1,135 @@
+@property --color-surface {
+  inherits: true;
+  initial-value: #fff;
+  syntax: "<color>";
+}
+
+@property --color-text {
+  inherits: true;
+  initial-value: #1c1917;
+  syntax: "<color>";
+}
+
+@property --color-accent {
+  inherits: true;
+  initial-value: #2e1065;
+  syntax: "<color>";
+}
+
+@property --color-on-accent {
+  inherits: true;
+  initial-value: #fff;
+  syntax: "<color>";
+}
+
+@property --color-muted-surface {
+  inherits: true;
+  initial-value: #f5f3ff;
+  syntax: "<color>";
+}
+
+/* A registered initial value must not depend on other values, so it is
+   given in px; rem would make the browser drop the whole registration. */
+@property --space {
+  inherits: true;
+  initial-value: 16px;
+  syntax: "<length>";
+}
+
+:root {
+  --color-accent: light-dark(#2e1065, #c4b5fd);
+  --color-muted-surface: light-dark(#f5f3ff, #1e1b2e);
+  --color-on-accent: light-dark(#fff, #1c1917);
+  --color-surface: light-dark(#fff, #121016);
+  --color-text: light-dark(#1c1917, #f5f5f4);
+  background-color: var(--color-surface);
+  color: var(--color-text);
+  color-scheme: light dark;
+  font-family: system-ui, sans-serif;
+  line-height: 1.5;
+}
+
+body {
+  margin: 0;
+}
+
+main {
+  display: grid;
+  gap: var(--space);
+  margin-inline: auto;
+  max-inline-size: 72rem;
+  padding: var(--space);
+}
+
+h1,
+h2 {
+  line-height: 1.2;
+  margin-block: 0;
+}
+
+.beats {
+  background-color: var(--color-muted-surface);
+  border-inline-start: 0.375rem solid var(--color-accent);
+  padding: var(--space);
+}
+
+.beats ol {
+  font-size: 1.25rem;
+  margin-block: calc(var(--space) / 2) 0;
+}
+
+.previews {
+  display: grid;
+  gap: var(--space);
+  grid-template-columns: repeat(auto-fit, minmax(min(100%, 20rem), 1fr));
+}
+
+figure {
+  margin: 0;
+}
+
+video {
+  aspect-ratio: 16 / 9;
+  background-color: #000;
+  display: block;
+  inline-size: 100%;
+}
+
+.actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: calc(var(--space) / 2);
+  margin-block-start: var(--space);
+}
+
+button {
+  background-color: var(--color-surface);
+  border: 0.125rem solid var(--color-accent);
+  border-radius: 0.375rem;
+  color: var(--color-text);
+  cursor: pointer;
+  font: inherit;
+  padding-block: 0.5rem;
+  padding-inline: 1rem;
+}
+
+button.primary {
+  background-color: var(--color-accent);
+  color: var(--color-on-accent);
+}
+
+button:disabled,
+button[aria-disabled="true"] {
+  cursor: not-allowed;
+  opacity: 0.5;
+}
+
+button:focus-visible {
+  outline: 0.1875rem solid var(--color-accent);
+  outline-offset: 0.1875rem;
+}
+
+.elapsed {
+  font-variant-numeric: tabular-nums;
+  margin-block-end: 0;
+}

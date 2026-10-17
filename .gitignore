@@ -16,3 +16,4 @@ dist
 shorts/*/takes/
 shorts/*/out/
 test-results/
+dist-web

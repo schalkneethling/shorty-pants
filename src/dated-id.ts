@@ -7,7 +7,7 @@ function localDate(date: Date): string {
   return `${year}-${month}-${day}`;
 }
 
-function slugify(title: string): string {
+function slugify(title: string, fallback: string): string {
   const words = title
     .normalize("NFKD")
     .replace(/\p{M}/gu, "")
@@ -24,15 +24,21 @@ function slugify(title: string): string {
     slug = candidate;
   }
 
-  return slug === "" ? "note" : slug;
+  return slug === "" ? fallback : slug;
 }
 
 /**
- * Creates a note id from the local date and a slug of the title, such as
- * 2026-10-17-anchor-scroll. A number is added when the id is already taken.
+ * Creates an id, for a note or a short folder, from the local date and a slug of the title, such as
+ * 2026-10-17-anchor-scroll. The fallback names an id whose title has no
+ * letters or digits. A number is added when the id is already taken.
  */
-export function createNoteId(title: string, date: Date, existingIds: string[]): string {
-  const baseId = `${localDate(date)}-${slugify(title)}`;
+export function createDatedId(
+  title: string,
+  date: Date,
+  existingIds: string[],
+  fallback = "note",
+): string {
+  const baseId = `${localDate(date)}-${slugify(title, fallback)}`;
   const taken = new Set(existingIds);
 
   let id = baseId;

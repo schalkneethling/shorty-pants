@@ -1,0 +1,52 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <meta name="color-scheme" content="light dark">
+    <title>Record a short · shorty-pants</title>
+    <!-- [html-validate-disable-next require-sri -- served from 127.0.0.1 by the recorder server, not from a CDN] -->
+    <link rel="stylesheet" href="./recorder.css">
+    <!-- [html-validate-disable-next require-sri -- served from 127.0.0.1 by the recorder server, not from a CDN] -->
+    <script type="module" src="./recorder.js"></script>
+  </head>
+  <body>
+    <main>
+      <h1>Record a short</h1>
+
+      <section class="beats" aria-labelledby="beats-heading">
+        <h2 id="beats-heading">Three beats</h2>
+        <ol>
+          <li>What surprised me</li>
+          <li>Show it</li>
+          <li>Why it happens</li>
+        </ol>
+      </section>
+
+      <section aria-labelledby="sources-heading">
+        <h2 id="sources-heading">Camera and window</h2>
+        <div class="previews">
+          <figure>
+            <video id="camera-preview" muted playsinline></video>
+            <figcaption>Camera</figcaption>
+          </figure>
+          <figure>
+            <video id="screen-preview" muted playsinline></video>
+            <figcaption>Shared window</figcaption>
+          </figure>
+        </div>
+
+        <div class="actions">
+          <button type="button" id="camera-button">Turn on camera</button>
+          <button type="button" id="screen-button">Choose window</button>
+          <button type="button" id="record-button" class="primary" disabled>Start recording</button>
+          <button type="button" id="stop-button" disabled>Stop</button>
+        </div>
+
+        <p class="elapsed">Recorded <time id="elapsed" datetime="PT0S">0:00</time> of 3:00</p>
+      </section>
+
+      <p><output id="status">Turn on the camera and choose a window to share.</output></p>
+    </main>
+  </body>
+</html>
