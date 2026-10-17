@@ -1,6 +1,11 @@
+import { join } from "node:path";
+import { fileURLToPath } from "node:url";
+import { parseArgs } from "node:util";
 import packageJson from "../package.json" with { type: "json" };
 import { ShortError } from "./errors.ts";
 import { captureNote, listNotes, restoreNote } from "./notes/inbox.ts";
+import { openUrl } from "./open-url.ts";
+import { recordShort } from "./recorder/record.ts";
 
 export interface CliIo {
   stdout: (text: string) => void;
@@ -10,6 +15,10 @@ export interface CliIo {
 export interface CliContext {
   cwd: string;
   now: () => Date;
+  environment: Record<string, string | undefined>;
+  // The folder with the built browser pages.
+  webRoot: string;
+  openUrl: (url: string) => Promise<void>;
 }
 
 type CommandHandler = (args: string[], io: CliIo, context: CliContext) => Promise<number>;
@@ -69,8 +78,64 @@ async function fromCommand(args: string[], io: CliIo, context: CliContext): Prom
       `These untracked files were not part of the snapshot:\n${restored.missingUntracked.map((path) => `  ${path}\n`).join("")}`,
     );
   }
-  // Recording from the restored worktree arrives with short record in milestone 3.
+  io.stdout('Open it in your editor, then run short record "<title>" to record the short.\n');
   return 0;
+}
+
+const recordUsage = 'Usage: short record ["<title>"] [--root <folder>] [--no-open]\n';
+
+async function recordCommand(args: string[], io: CliIo, context: CliContext): Promise<number> {
+  let parsed;
+  try {
+    parsed = parseArgs({
+      args,
+      allowPositionals: true,
+      options: {
+        root: { type: "string" },
+        "no-open": { type: "boolean", default: false },
+      },
+    });
+  } catch {
+    io.stderr(recordUsage);
+    return 2;
+  }
+
+  const shortsRoot =
+    parsed.values.root ??
+    context.environment.SHORTY_PANTS_SHORTS_ROOT ??
+    join(context.cwd, "shorts");
+  const shouldOpen = !parsed.values["no-open"];
+
+  // Ctrl+C stops waiting for the browser and shuts the server down.
+  const controller = new AbortController();
+  const cancel = () => controller.abort();
+  process.once("SIGINT", cancel);
+
+  try {
+    const result = await recordShort({
+      shortsRoot,
+      title: parsed.positionals.join(" "),
+      now: context.now,
+      webRoot: context.webRoot,
+      signal: controller.signal,
+      onReady: async (url) => {
+        io.stdout(`The recorder is open at ${url}\n`);
+        io.stdout("Record in Chrome or another Chromium browser. Press Ctrl+C to cancel.\n");
+        if (shouldOpen) {
+          await context.openUrl(url);
+        }
+      },
+    });
+
+    if (result.outcome === "cancelled") {
+      io.stdout(`Recording cancelled. The folder ${result.folder} was left in place.\n`);
+      return 1;
+    }
+    io.stdout(`Saved the take in ${result.folder}\n`);
+    return 0;
+  } finally {
+    process.removeListener("SIGINT", cancel);
+  }
 }
 
 const commands: CommandDescription[] = [
@@ -81,7 +146,7 @@ const commands: CommandDescription[] = [
   },
   { name: "notes", summary: "List saved ideas", handler: notesCommand },
   { name: "from", summary: "Restore a note's Git state in a new worktree", handler: fromCommand },
-  { name: "record", summary: "Open the recorder for a new short", handler: { milestone: 3 } },
+  { name: "record", summary: "Open the recorder for a new short", handler: recordCommand },
   { name: "edit", summary: "Open the editor for an existing short", handler: { milestone: 5 } },
   {
     name: "render",
@@ -112,6 +177,10 @@ function usage(): string {
 const defaultContext: CliContext = {
   cwd: process.cwd(),
   now: () => new Date(),
+  environment: process.env,
+  // The built CLI lives in dist/, next to dist-web/.
+  webRoot: fileURLToPath(new URL("../dist-web/", import.meta.url)),
+  openUrl,
 };
 
 /**
@@ -121,8 +190,9 @@ const defaultContext: CliContext = {
 export async function run(
   args: string[],
   io: CliIo,
-  context: CliContext = defaultContext,
+  contextOverrides: Partial<CliContext> = {},
 ): Promise<number> {
+  const context: CliContext = { ...defaultContext, ...contextOverrides };
   const [commandName, ...commandArgs] = args;
 
   const wantsHelp = commandName === undefined || commandName === "--help" || commandName === "-h";

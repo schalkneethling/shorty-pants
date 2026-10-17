@@ -28,10 +28,10 @@ function slugify(title: string): string {
 }
 
 /**
- * Creates a note id from the local date and a slug of the title, such as
+ * Creates an id, for a note or a short folder, from the local date and a slug of the title, such as
  * 2026-10-17-anchor-scroll. A number is added when the id is already taken.
  */
-export function createNoteId(title: string, date: Date, existingIds: string[]): string {
+export function createDatedId(title: string, date: Date, existingIds: string[]): string {
   const baseId = `${localDate(date)}-${slugify(title)}`;
   const taken = new Set(existingIds);
 
