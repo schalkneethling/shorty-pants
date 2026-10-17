@@ -20,7 +20,7 @@
     "url": "git+https://github.com/schalkneethling/shorty-pants.git"
   },
   "bin": {
-    "shorty-pants": "./dist/bin.mjs"
+    "short": "./dist/bin.mjs"
   },
   "files": [
     "dist"

@@ -13,7 +13,11 @@ export default defineConfig({
       generator: "tsgo",
     },
     // The bin entry is the CLI, not a module for other packages to import.
-    exports: { exclude: ["bin"] },
+    exports: {
+      exclude: ["bin"],
+      // Without this, the command name comes from the package name.
+      bin: { short: "./src/bin.ts" },
+    },
   },
   test: {
     // Playwright owns tests/e2e/*.spec.ts.

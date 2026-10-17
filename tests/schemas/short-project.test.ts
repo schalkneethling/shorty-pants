@@ -69,6 +69,19 @@ describe("parseShortProject", () => {
     expect(parseShortProject(project).success).toBe(true);
   });
 
+  test("matches a headline accent whose lowercase form has a combining mark", () => {
+    const project = validProject();
+    project.headline = { text: "Visiting İstanbul with anchors", accent: "İstanbul" };
+    expect(parseShortProject(project).success).toBe(true);
+  });
+
+  test("matches a headline accent written in a different Unicode normalization form", () => {
+    const project = validProject();
+    // "café" with a precomposed é in the text and a combining accent in the accent.
+    project.headline = { text: "Anchor caf\u00e9", accent: "cafe\u0301" };
+    expect(parseShortProject(project).success).toBe(true);
+  });
+
   test("rejects an empty headline accent", () => {
     const project = validProject();
     project.headline = { text: "Anchor positioning ignores scroll", accent: "" };

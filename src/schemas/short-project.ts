@@ -30,8 +30,15 @@ const removedWordRangeSchema = z
     message: "A removed word range must not end before it starts.",
   });
 
+// Normalizing first makes precomposed and combining forms of the same word
+// compare equal. Lowercasing can add combining marks (İ becomes i plus a dot),
+// so marks count as part of a word.
+function normalizeWord(text: string): string {
+  return text.normalize("NFC").toLocaleLowerCase();
+}
+
 function headlineWords(text: string): string[] {
-  return text.toLocaleLowerCase().split(/[^\p{L}\p{N}'-]+/u);
+  return normalizeWord(text).split(/[^\p{L}\p{M}\p{N}'-]+/u);
 }
 
 const headlineSchema = z
@@ -39,13 +46,10 @@ const headlineSchema = z
     text: z.string().trim().min(1),
     accent: z.string().trim().min(1),
   })
-  .refine(
-    (headline) => headlineWords(headline.text).includes(headline.accent.toLocaleLowerCase()),
-    {
-      message: "The accent must be one of the words in the headline.",
-      path: ["accent"],
-    },
-  );
+  .refine((headline) => headlineWords(headline.text).includes(normalizeWord(headline.accent)), {
+    message: "The accent must be one of the words in the headline.",
+    path: ["accent"],
+  });
 
 const screenCropSchema = z.object({
   x: pixels,
