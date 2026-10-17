@@ -1,4 +1,5 @@
-import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
+import { existsSync, mkdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import { execFileSync } from "node:child_process";
 import { join } from "node:path";
 import { afterEach, beforeEach, describe, expect, test } from "vite-plus/test";
 import { captureNote, listNotes, restoreNote } from "../../src/notes/inbox.ts";
@@ -8,7 +9,7 @@ import {
   type TestRepository,
 } from "../helpers/git-repository.ts";
 
-const now = () => new Date("2026-10-17T13:45:00.000Z");
+const now = () => new Date(2026, 9, 17, 13, 45);
 let repository: TestRepository;
 
 beforeEach(() => {
@@ -91,6 +92,31 @@ describe("captureNote", () => {
     expect(second.id).toBe("2026-10-17-same-2");
   });
 
+  test("keeps the noted commit reachable even without uncommitted changes", async () => {
+    const note = await captureNote({ cwd: repository.root, title: "Clean", now });
+    expect(repository.git(["rev-parse", `refs/shorts/base/${note.id}`])).toBe(note.commit);
+  });
+
+  test("never reuses an id whose ref already exists", async () => {
+    const head = repository.git(["rev-parse", "HEAD"]);
+    repository.git(["update-ref", "refs/shorts/2026-10-17-taken", head]);
+    const note = await captureNote({ cwd: repository.root, title: "Taken", now });
+    expect(note.id).toBe("2026-10-17-taken-2");
+  });
+
+  test("is not blocked by an unreadable file in the notes folder", async () => {
+    mkdirSync(join(repository.root, ".shorts", "notes"), { recursive: true });
+    writeFileSync(join(repository.root, ".shorts", "notes", "README.md"), "Not a note\n");
+    const note = await captureNote({ cwd: repository.root, title: "Still works", now });
+    expect(note.id).toBe("2026-10-17-still-works");
+  });
+
+  test("keeps whitespace at the edges of untracked file names", async () => {
+    repository.write(" leading space.txt", "x\n");
+    const note = await captureNote({ cwd: repository.root, title: "Spaces", now });
+    expect(note.untracked).toEqual([" leading space.txt"]);
+  });
+
   test("refuses to run outside a Git repository", async () => {
     const outside = join(repository.root, "..");
     await expect(captureNote({ cwd: outside, title: "Nowhere", now })).rejects.toThrow(
@@ -104,7 +130,7 @@ describe("listNotes", () => {
     await captureNote({
       cwd: repository.root,
       title: "Older",
-      now: () => new Date("2026-10-16T10:00:00.000Z"),
+      now: () => new Date(2026, 9, 16, 10, 0),
     });
     await captureNote({ cwd: repository.root, title: "Newer", now });
 
@@ -136,7 +162,9 @@ describe("restoreNote", () => {
 
     const restored = await restoreNote({ cwd: repository.root, noteId: note.id });
 
-    expect(restored.worktreePath).toBe(join(repository.root, ".shorts", "worktrees", note.id));
+    expect(restored.worktreePath).toBe(
+      join(repository.root, ".git", "shorts", "worktrees", note.id),
+    );
     expect(readFileSync(join(restored.worktreePath, "demo.css"), "utf8")).toBe(
       ".anchor { position: fixed; }\n",
     );
@@ -159,6 +187,51 @@ describe("restoreNote", () => {
     expect(restored.missingUntracked).toEqual(["new-demo.html"]);
   });
 
+  test("restores staged changes as staged", async () => {
+    repository.write("demo.css", ".anchor { position: fixed; }\n");
+    repository.git(["add", "demo.css"]);
+    const note = await captureNote({ cwd: repository.root, title: "Staged", now });
+    repository.git(["reset", "--quiet", "--hard"]);
+
+    const restored = await restoreNote({ cwd: repository.root, noteId: note.id });
+    const status = execFileSync("git", ["status", "--porcelain"], {
+      cwd: restored.worktreePath,
+      encoding: "utf8",
+    });
+    expect(status).toBe("M  demo.css\n");
+  });
+
+  test("removes the worktree when the snapshot cannot be applied", async () => {
+    repository.write("demo.css", ".anchor { position: fixed; }\n");
+    const note = await captureNote({ cwd: repository.root, title: "Broken snapshot", now });
+    repository.git(["update-ref", "-d", note.snapshotRef!]);
+
+    await expect(restoreNote({ cwd: repository.root, noteId: note.id })).rejects.toThrow(
+      /Could not apply the snapshot/,
+    );
+    expect(existsSync(join(repository.root, ".git", "shorts", "worktrees", note.id))).toBe(false);
+  });
+
+  test("restores again after the worktree folder was deleted by hand", async () => {
+    const note = await captureNote({ cwd: repository.root, title: "Deleted by hand", now });
+    const first = await restoreNote({ cwd: repository.root, noteId: note.id });
+    rmSync(first.worktreePath, { recursive: true, force: true });
+
+    const second = await restoreNote({ cwd: repository.root, noteId: note.id });
+    expect(existsSync(join(second.worktreePath, "demo.css"))).toBe(true);
+  });
+
+  test("reports a commit that no longer exists", async () => {
+    const note = await captureNote({ cwd: repository.root, title: "Gone", now });
+    const notePath = join(repository.root, ".shorts", "notes", `${note.id}.md`);
+    const missingCommit = "a".repeat(40);
+    writeFileSync(notePath, readFileSync(notePath, "utf8").replace(note.commit, missingCommit));
+
+    await expect(restoreNote({ cwd: repository.root, noteId: note.id })).rejects.toThrow(
+      /no longer exists/,
+    );
+  });
+
   test("refuses an unknown note id", async () => {
     await expect(
       restoreNote({ cwd: repository.root, noteId: "2026-10-17-missing" }),
@@ -170,6 +243,40 @@ describe("restoreNote", () => {
     await restoreNote({ cwd: repository.root, noteId: note.id });
     await expect(restoreNote({ cwd: repository.root, noteId: note.id })).rejects.toThrow(
       /already exists/,
+    );
+  });
+});
+
+describe("linked worktrees", () => {
+  let linkedPath: string;
+
+  beforeEach(() => {
+    linkedPath = `${repository.root}-linked`;
+    repository.git(["worktree", "add", "--quiet", "-b", "feature", linkedPath]);
+  });
+
+  afterEach(() => {
+    rmSync(linkedPath, { recursive: true, force: true });
+  });
+
+  test("share one notes folder with the main worktree", async () => {
+    const note = await captureNote({ cwd: linkedPath, title: "From the feature branch", now });
+    expect(note.branch).toBe("feature");
+    expect(note.repository).toBe(linkedPath);
+
+    const notes = await listNotes({ cwd: repository.root });
+    expect(notes.map((saved) => saved.id)).toEqual([note.id]);
+  });
+
+  test("never give two notes the same id, so snapshots are not overwritten", async () => {
+    writeFileSync(join(linkedPath, "demo.css"), ".anchor { position: sticky; }\n");
+    const fromLinked = await captureNote({ cwd: linkedPath, title: "Scroll bug", now });
+    repository.write("demo.css", ".anchor { position: fixed; }\n");
+    const fromMain = await captureNote({ cwd: repository.root, title: "Scroll bug", now });
+
+    expect(fromMain.id).not.toBe(fromLinked.id);
+    expect(repository.git(["show", `${fromLinked.snapshotRef}:demo.css`])).toBe(
+      ".anchor { position: sticky; }",
     );
   });
 });

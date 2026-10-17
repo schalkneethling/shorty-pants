@@ -1,6 +1,6 @@
 import { z } from "zod";
 
-const noteIdSchema = z
+export const noteIdSchema = z
   .string()
   .regex(/^[a-z0-9]+(?:-[a-z0-9]+)*$/, "Use a lowercase slug, such as 2026-10-17-anchor-scroll.");
 

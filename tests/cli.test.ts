@@ -65,7 +65,7 @@ describe("short CLI", () => {
 
 describe("short note, notes and from", () => {
   let repository: TestRepository;
-  const now = () => new Date("2026-10-17T13:45:00.000Z");
+  const now = () => new Date(2026, 9, 17, 13, 45);
 
   beforeEach(() => {
     Object.assign(process.env, gitEnvironment);
@@ -129,8 +129,22 @@ describe("short note, notes and from", () => {
     const { io, output } = createIo();
     expect(await run(["from", "2026-10-17-restore-me"], io, { cwd: repository.root, now })).toBe(0);
     expect(output.stdout).toContain(
-      join(repository.root, ".shorts", "worktrees", "2026-10-17-restore-me"),
+      join(repository.root, ".git", "shorts", "worktrees", "2026-10-17-restore-me"),
     );
+  });
+
+  test("short from reports a git failure as a message, not a stack trace", async () => {
+    const silent = createIo();
+    repository.write("demo.css", ".anchor { inset: 0; }\n");
+    await run(["note", "Lost snapshot"], silent.io, { cwd: repository.root, now });
+    repository.git(["update-ref", "-d", "refs/shorts/2026-10-17-lost-snapshot"]);
+
+    const { io, output } = createIo();
+    expect(await run(["from", "2026-10-17-lost-snapshot"], io, { cwd: repository.root, now })).toBe(
+      1,
+    );
+    expect(output.stderr).toContain("Could not apply the snapshot");
+    expect(output.stderr).not.toMatch(/\n\s+at /);
   });
 
   test("short from without a note id is a usage error", async () => {

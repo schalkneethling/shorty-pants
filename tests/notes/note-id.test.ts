@@ -1,7 +1,7 @@
 import { describe, expect, test } from "vite-plus/test";
 import { createNoteId } from "../../src/notes/note-id.ts";
 
-const date = new Date("2026-10-17T13:45:00.000Z");
+const date = new Date(2026, 9, 17, 13, 45);
 
 describe("createNoteId", () => {
   test("combines the date with a slug of the title", () => {
