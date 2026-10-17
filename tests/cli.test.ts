@@ -1,5 +1,11 @@
-import { describe, expect, test } from "vite-plus/test";
+import { join } from "node:path";
+import { afterEach, beforeEach, describe, expect, test } from "vite-plus/test";
 import { run } from "../src/cli.ts";
+import {
+  createTestRepository,
+  gitEnvironment,
+  type TestRepository,
+} from "./helpers/git-repository.ts";
 
 function createIo() {
   const output = { stdout: "", stderr: "" };
@@ -54,5 +60,82 @@ describe("short CLI", () => {
     const { io, output } = createIo();
     expect(await run(["record"], io)).toBe(1);
     expect(output.stderr).toContain('"short record" is not available yet');
+  });
+});
+
+describe("short note, notes and from", () => {
+  let repository: TestRepository;
+  const now = () => new Date("2026-10-17T13:45:00.000Z");
+
+  beforeEach(() => {
+    Object.assign(process.env, gitEnvironment);
+    repository = createTestRepository();
+  });
+
+  afterEach(() => {
+    repository.remove();
+  });
+
+  test("short note saves a note and prints its id", async () => {
+    const { io, output } = createIo();
+    const exitCode = await run(["note", "Anchor", "positioning", "ignores", "scroll"], io, {
+      cwd: repository.root,
+      now,
+    });
+    expect(exitCode).toBe(0);
+    expect(output.stdout).toContain("Saved note 2026-10-17-anchor-positioning-ignores-scroll");
+  });
+
+  test("short note mentions untracked files that the snapshot leaves out", async () => {
+    repository.write("new-demo.html", "<p>New</p>\n");
+    const { io, output } = createIo();
+    await run(["note", "Untracked"], io, { cwd: repository.root, now });
+    expect(output.stdout).toContain("new-demo.html");
+  });
+
+  test("short note without a title is a usage error", async () => {
+    const { io, output } = createIo();
+    expect(await run(["note"], io, { cwd: repository.root, now })).toBe(2);
+    expect(output.stderr).toContain('Usage: short note "<what you noticed>"');
+  });
+
+  test("short note outside a repository reports the problem and exits with 1", async () => {
+    const { io, output } = createIo();
+    const outside = join(repository.root, "..");
+    expect(await run(["note", "Nowhere"], io, { cwd: outside, now })).toBe(1);
+    expect(output.stderr).toContain("is not inside a Git repository");
+  });
+
+  test("short notes lists the saved notes", async () => {
+    const silent = createIo();
+    await run(["note", "First idea"], silent.io, { cwd: repository.root, now });
+
+    const { io, output } = createIo();
+    expect(await run(["notes"], io, { cwd: repository.root, now })).toBe(0);
+    expect(output.stdout).toContain("2026-10-17-first-idea");
+    expect(output.stdout).toContain("First idea");
+  });
+
+  test("short notes says so when there are no notes", async () => {
+    const { io, output } = createIo();
+    await run(["notes"], io, { cwd: repository.root, now });
+    expect(output.stdout).toContain("No notes yet");
+  });
+
+  test("short from restores a note and prints the worktree path", async () => {
+    const silent = createIo();
+    await run(["note", "Restore me"], silent.io, { cwd: repository.root, now });
+
+    const { io, output } = createIo();
+    expect(await run(["from", "2026-10-17-restore-me"], io, { cwd: repository.root, now })).toBe(0);
+    expect(output.stdout).toContain(
+      join(repository.root, ".shorts", "worktrees", "2026-10-17-restore-me"),
+    );
+  });
+
+  test("short from without a note id is a usage error", async () => {
+    const { io, output } = createIo();
+    expect(await run(["from"], io, { cwd: repository.root, now })).toBe(2);
+    expect(output.stderr).toContain("Usage: short from <note id>");
   });
 });
