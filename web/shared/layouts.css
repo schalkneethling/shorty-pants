@@ -33,6 +33,9 @@
   aspect-ratio: 9 / 16;
   background-color: var(--color-frame);
   container-type: inline-size;
+  /* Positions are frame coordinates from the top-left corner, as in the
+     render, so the frame never mirrors in a right-to-left page. */
+  direction: ltr;
   inline-size: 100%;
   overflow: hidden;
   position: relative;

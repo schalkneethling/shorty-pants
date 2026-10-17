@@ -91,15 +91,16 @@
             </div>
           </section>
 
-          <section aria-labelledby="headline-heading">
-            <h2 id="headline-heading">Headline</h2>
+          <fieldset class="headline-choice">
+            <legend>Headline</legend>
             <div class="headline-fields">
-              <label for="headline-text">Headline</label>
-              <input type="text" id="headline-text" maxlength="80" autocomplete="off" disabled>
+              <label for="headline-text">Headline text</label>
+              <input type="text" id="headline-text" maxlength="80" autocomplete="off" aria-describedby="headline-help" disabled>
               <label for="headline-accent">Accent word</label>
               <select id="headline-accent" disabled></select>
             </div>
-          </section>
+            <p id="headline-help">The headline has room for two lines.</p>
+          </fieldset>
 
           <fieldset id="screen-crop" class="screen-crop" disabled>
             <legend>Screen crop</legend>

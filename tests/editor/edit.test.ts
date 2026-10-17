@@ -219,6 +219,24 @@ describe("short edit", () => {
     expect(output.stderr).toContain("does not match transcript.json");
   });
 
+  test("refuses a short.json whose layout segments start past the last word", async () => {
+    const stale = {
+      version: 1,
+      takes: { cam: "takes/cam.webm", screen: "takes/screen.webm", screenOffsetMs: 42 },
+      trim: { startMs: 0, endMs: 4000 },
+      removedWords: [],
+      pauseThresholdMs: 600,
+      segments: [
+        { fromWord: 0, layout: "split" },
+        { fromWord: 5, layout: "face" },
+      ],
+    };
+    writeFileSync(join(shortFolder, "short.json"), JSON.stringify(stale));
+    const { io, output } = createIo();
+    expect(await run(["edit", shortFolder], io, context())).toBe(1);
+    expect(output.stderr).toContain("does not match transcript.json");
+  });
+
   test("refuses a short.json whose trim ends after the recording", async () => {
     const stale = {
       version: 1,

@@ -1,6 +1,7 @@
 import type { Preset } from "../schemas/preset.ts";
 import type { TranscriptWord } from "../schemas/transcript.ts";
 import type { KeepRange } from "./cut-list.ts";
+import { shortTimeMs, wordIndexAt } from "./playback.ts";
 
 export interface CaptionChunk {
   words: TranscriptWord[];
@@ -57,8 +58,17 @@ function chunkSentence(sentence: TranscriptWord[], style: CaptionStyle): Transcr
   return chunks;
 }
 
-/** Groups the kept words into the chunks of text the captions show one at a time. */
-export function chunkCaptions(words: TranscriptWord[], style: CaptionStyle): CaptionChunk[] {
+/**
+ * Groups the kept words into the chunks of text the captions show one at a
+ * time. With the keep ranges, the gap between two chunks is measured in the
+ * short, where cut pauses take no time.
+ */
+export function chunkCaptions(
+  words: TranscriptWord[],
+  style: CaptionStyle,
+  keepRanges?: KeepRange[],
+): CaptionChunk[] {
+  const toShortMs = (ms: number) => (keepRanges === undefined ? ms : shortTimeMs(keepRanges, ms));
   const sentences: TranscriptWord[][] = [[]];
   for (const word of words) {
     sentences.at(-1)!.push(word);
@@ -72,7 +82,8 @@ export function chunkCaptions(words: TranscriptWord[], style: CaptionStyle): Cap
     const startMs = group[0]!.startMs;
     const endMs = group.at(-1)!.endMs;
     const nextStartMs = groups[index + 1]?.[0]?.startMs;
-    const isNextClose = nextStartMs !== undefined && nextStartMs - endMs <= captionHoldMs;
+    const isNextClose =
+      nextStartMs !== undefined && toShortMs(nextStartMs) - toShortMs(endMs) <= captionHoldMs;
     return {
       words: group,
       startMs,
@@ -99,12 +110,5 @@ export function captionAt(
   if (chunk === undefined) {
     return null;
   }
-  // The word being said, or the last one said when the moment falls between words.
-  let wordIndex = 0;
-  chunk.words.forEach((word, index) => {
-    if (word.startMs <= ms) {
-      wordIndex = index;
-    }
-  });
-  return { chunk, wordIndex };
+  return { chunk, wordIndex: wordIndexAt(chunk.words, ms) };
 }

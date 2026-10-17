@@ -144,8 +144,9 @@ export async function startEditorServer(options: EditorServerOptions): Promise<E
     if (updated.removedWords.some(([, toWord]) => toWord > lastWordIndex)) {
       throw new HttpError(400, "The cuts refer to words that are not in the transcript.");
     }
+    // A transcript without words still has its first segment at word 0.
     const hasSegmentPastLastWord = updated.segments.some(
-      (segment) => segment.fromWord > 0 && segment.fromWord > lastWordIndex,
+      (segment) => segment.fromWord > Math.max(lastWordIndex, 0),
     );
     if (hasSegmentPastLastWord) {
       throw new HttpError(400, "A layout segment starts after the last word of the transcript.");

@@ -1,3 +1,5 @@
+import { writeFileSync } from "node:fs";
+import { join } from "node:path";
 import AxeBuilder from "@axe-core/playwright";
 import { expect, test, type Page } from "@playwright/test";
 import {
@@ -47,6 +49,25 @@ test("gives the selected words their own layout and shows it in the preview", as
   await expect(previewFrame(page)).toHaveAttribute("data-layout", "split");
 });
 
+test("checks no layout for a selection with several, so any layout can be applied", async ({
+  page,
+}) => {
+  await openEditor(page, workspace);
+  await words(page).first().click();
+  await page.keyboard.press("Shift+ArrowRight");
+  await layoutGroup(page).getByRole("radio", { name: "Face" }).check();
+
+  await words(page).first().click();
+  await page.keyboard.press("Shift+End");
+  for (const name of ["Split", "Face", "Circle cam"]) {
+    await expect(layoutGroup(page).getByRole("radio", { name })).not.toBeChecked();
+  }
+  await layoutGroup(page).getByRole("radio", { name: "Split" }).check();
+  await expect
+    .poll(() => workspace.savedShort().segments)
+    .toEqual([{ fromWord: 0, layout: "split" }]);
+});
+
 test("shows the camera in a circle over the window in the circle layout", async ({ page }) => {
   await openEditor(page, workspace);
   await words(page).first().click();
@@ -84,6 +105,32 @@ test("saves the headline and its accent word, and shows them in the preview", as
   await expect(page.locator("#headline-preview")).toBeHidden();
 });
 
+test("keeps the chosen accent while its word is being edited", async ({ page }) => {
+  await openEditor(page, workspace);
+  const headline = page.getByRole("textbox", { name: "Headline" });
+  const accent = page.getByRole("combobox", { name: "Accent word" });
+  await headline.fill("Anchors ignore scroll");
+  await accent.selectOption("ignore");
+
+  // While the word is mistyped, the last word stands in for it.
+  await headline.fill("Anchors ignor scroll");
+  await expect(accent).toHaveValue("scroll");
+  await headline.fill("Anchors ignore scroll");
+  await expect(accent).toHaveValue("ignore");
+  await expect
+    .poll(() => workspace.savedShort().headline)
+    .toEqual({ text: "Anchors ignore scroll", accent: "ignore" });
+});
+
+test("says when the headline is too long to fit", async ({ page }) => {
+  await openEditor(page, workspace);
+  const headline = page.getByRole("textbox", { name: "Headline" });
+  await headline.fill("Anchor positioning ignores the scroll container completely");
+  await expect(headline).toHaveAccessibleDescription(/too long/);
+  await headline.fill("Anchors ignore scroll");
+  await expect(headline).toHaveAccessibleDescription(/fits/);
+});
+
 test("crops the shared window and resets the crop", async ({ page }) => {
   await openEditor(page, workspace);
   const crop = page.getByRole("group", { name: "Screen crop" });
@@ -93,6 +140,7 @@ test("crops the shared window and resets the crop", async ({ page }) => {
   await expect(width).toHaveValue("320");
 
   await width.fill("160");
+  await width.blur();
   await expect
     .poll(() => workspace.savedShort().screenCrop)
     .toEqual({ x: 0, y: 0, width: 160, height: 240 });
@@ -106,10 +154,52 @@ test("keeps the crop inside the window", async ({ page }) => {
   await openEditor(page, workspace);
   const crop = page.getByRole("group", { name: "Screen crop" });
   await expect(crop.getByRole("spinbutton", { name: "Width" })).toBeEnabled();
-  await crop.getByRole("spinbutton", { name: "Left" }).fill("300");
+  const left = crop.getByRole("spinbutton", { name: "Left" });
+  await left.fill("300");
+  await left.blur();
   await expect
     .poll(() => workspace.savedShort().screenCrop)
     .toEqual({ x: 300, y: 0, width: 20, height: 240 });
+  await expect(page.getByRole("status")).toHaveText(
+    "The crop was changed to stay inside the window.",
+  );
+});
+
+test("leaves the other crop values alone while a value is typed", async ({ page }) => {
+  await openEditor(page, workspace);
+  const crop = page.getByRole("group", { name: "Screen crop" });
+  const width = crop.getByRole("spinbutton", { name: "Width" });
+  await expect(width).toBeEnabled();
+
+  await width.click();
+  await width.press("End");
+  for (let count = 0; count < 3; count += 1) {
+    await width.press("Backspace");
+  }
+  await width.pressSequentially("160");
+  await width.press("Tab");
+  await expect(width).toHaveValue("160");
+  await expect
+    .poll(() => workspace.savedShort().screenCrop)
+    .toEqual({ x: 0, y: 0, width: 160, height: 240 });
+});
+
+test("brings a crop saved for a larger recording inside the window", async ({ page }) => {
+  const shortPath = join(workspace.shortFolder, "short.json");
+  writeFileSync(
+    shortPath,
+    JSON.stringify({
+      ...workspace.savedShort(),
+      screenCrop: { x: 0, y: 0, width: 1920, height: 1080 },
+    }),
+  );
+  await openEditor(page, workspace);
+  const crop = page.getByRole("group", { name: "Screen crop" });
+  await expect(crop.getByRole("spinbutton", { name: "Width" })).toHaveValue("320");
+  await expect(crop.getByRole("spinbutton", { name: "Height" })).toHaveValue("240");
+  await expect
+    .poll(() => workspace.savedShort().screenCrop)
+    .toEqual({ x: 0, y: 0, width: 320, height: 240 });
 });
 
 test("shows the caption chunk being said, with the current word lit", async ({ page }) => {
@@ -134,12 +224,23 @@ test("shows and hides the safe zone guides", async ({ page }) => {
   await expect(guides).toBeHidden();
 });
 
-test("uses the bundled Noto Sans for the headline and captions", async ({ page }) => {
+test("draws the headline and captions in the bundled Noto Sans", async ({ page }) => {
   await openEditor(page, workspace);
-  const loadedFaces = await page.evaluate(
-    async () => (await document.fonts.load('700 48px "Noto Sans"')).length,
-  );
-  expect(loadedFaces).toBeGreaterThan(0);
+  await page.getByRole("textbox", { name: "Headline" }).fill("Anchors ignore scroll");
+  await words(page).first().click();
+  const headline = page.locator("#headline-preview");
+  await expect(headline).toBeVisible();
+  await expect(page.locator("#captions-preview")).toBeVisible();
+
+  await expect(headline).toHaveCSS("font-family", /^"Noto Sans"/);
+  await expect(page.locator("#captions-preview")).toHaveCSS("font-family", /^"Noto Sans"/);
+  const isBundledFaceReady = await page.evaluate(async () => {
+    await document.fonts.ready;
+    return [...document.fonts].some(
+      (face) => face.family.replaceAll('"', "") === "Noto Sans" && face.status === "loaded",
+    );
+  });
+  expect(isBundledFaceReady).toBe(true);
 });
 
 for (const colorScheme of ["light", "dark"] as const) {

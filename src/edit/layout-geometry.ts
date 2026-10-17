@@ -36,6 +36,16 @@ const circleCameraSizePx = 360;
 // In the split layout, the window takes the top 55 percent of the frame.
 const splitScreenHeightPx = Math.round(frame.height * 0.55);
 
+/**
+ * The smallest safe area that fits every layout's overlays without overlap.
+ * The circle layout needs the most height: the headline, the captions and
+ * the camera stacked, with a margin around each.
+ */
+export const minimumSafeArea: Size = {
+  width: circleCameraSizePx + overlayMarginPx * 2,
+  height: headlineHeightPx + captionsHeightPx + circleCameraSizePx + overlayMarginPx * 4,
+};
+
 const fullFrame: Rect = { x: 0, y: 0, width: frame.width, height: frame.height };
 
 /** The part of the frame that YouTube's own buttons and text leave uncovered. */
@@ -132,11 +142,27 @@ export interface Placement {
 }
 
 /**
+ * Keeps a crop inside its source, as whole pixels. A crop saved for one
+ * recording can be too large for a new, smaller recording of the same short.
+ */
+export function clampCrop(crop: Rect, source: Size): Rect {
+  const x = clamp(Math.round(crop.x), 0, source.width - 1);
+  const y = clamp(Math.round(crop.y), 0, source.height - 1);
+  return {
+    x,
+    y,
+    width: clamp(Math.round(crop.width), 1, source.width - x),
+    height: clamp(Math.round(crop.height), 1, source.height - y),
+  };
+}
+
+/**
  * Scales a source video so that the cropped part covers the slot, centered
  * on the crop, like object-fit: cover applied to the crop alone. The source
  * is never moved so far that the slot would show an empty edge.
  */
-export function coverPlacement(source: Size, crop: Rect, slot: Rect): Placement {
+export function coverPlacement(source: Size, requestedCrop: Rect, slot: Rect): Placement {
+  const crop = clampCrop(requestedCrop, source);
   const scale = Math.max(slot.width / crop.width, slot.height / crop.height);
   const width = source.width * scale;
   const height = source.height * scale;

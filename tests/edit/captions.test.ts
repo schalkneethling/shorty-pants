@@ -70,6 +70,20 @@ describe("chunkCaptions", () => {
     expect(first!.displayEndMs).toBe(second!.startMs);
   });
 
+  test("holds a chunk across a pause that the cuts remove from the short", () => {
+    const words = [
+      { text: "one", startMs: 0, endMs: 400 },
+      { text: "two", startMs: 2000, endMs: 2400 },
+    ];
+    // The pause from 500 to 1900 is cut, so in the short the words are close.
+    const keepRanges = [
+      { startMs: 0, endMs: 500 },
+      { startMs: 1900, endMs: 2500 },
+    ];
+    const [first] = chunkCaptions(words, { ...style, wordsPerChunk: 1 }, keepRanges);
+    expect(first!.displayEndMs).toBe(2000);
+  });
+
   test("lets a chunk end with its last word before a long gap", () => {
     const words = [
       { text: "one", startMs: 0, endMs: 400 },

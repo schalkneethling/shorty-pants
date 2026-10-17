@@ -53,9 +53,12 @@
   display: none;
 }
 
+/* Two lines of headline fit in its area; anything longer is clipped, and
+   the editor says so. */
 .headline {
   align-items: start;
-  font-size: calc(72 * var(--frame-pixel));
+  font-size: calc(64 * var(--frame-pixel));
+  overflow: hidden;
 }
 
 .captions {

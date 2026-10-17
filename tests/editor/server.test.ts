@@ -194,6 +194,11 @@ describe("PUT /api/short", () => {
     expect(readShort()).not.toHaveProperty("screenCrop");
   });
 
+  test("removes the headline when it is set to null", async () => {
+    expect((await saveShort({ headline: null })).status).toBe(200);
+    expect(readShort()).not.toHaveProperty("headline");
+  });
+
   test("refuses an accent that is not a word of the headline", async () => {
     const response = await saveShort({ headline: { text: "Anchors ignore scroll", accent: "x" } });
     expect(response.status).toBe(400);

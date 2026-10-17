@@ -108,8 +108,12 @@
   justify-self: start;
 }
 
-/* A bar before the first word of each later layout segment. */
+/* A bar before the first word of each later layout segment. Only the color
+   changes, so the words after it do not move. */
 .word.starts-layout {
   border-inline-start-color: var(--color-accent);
-  border-inline-start-width: 0.25rem;
+}
+
+.headline-choice p {
+  margin: 0;
 }

@@ -95,11 +95,12 @@ export function createPreview(elements: PreviewElements, preset: Preset) {
       }
     },
 
-    showHeadline(headline: Headline | undefined) {
+    /** Draws the headline and returns whether all of it fits in its area. */
+    showHeadline(headline: Headline | undefined): boolean {
       elements.headline.hidden = headline === undefined;
       if (headline === undefined) {
         elements.headline.replaceChildren();
-        return;
+        return true;
       }
       // The text is split into words and the gaps between them, so the accent
       // word can be wrapped in a mark without changing the rest.
@@ -117,6 +118,8 @@ export function createPreview(elements: PreviewElements, preset: Preset) {
         }
       }
       elements.headline.replaceChildren(band);
+      // The area clips what does not fit, so taller content means lost text.
+      return elements.headline.scrollHeight <= elements.headline.clientHeight;
     },
 
     showCaption(caption: { chunk: CaptionChunk; wordIndex: number } | null) {

@@ -37,6 +37,20 @@ export function shortTimeMs(ranges: KeepRange[], cameraMs: number): number {
  * The screen recording's time for a camera time. screenOffsetMs is positive
  * when the screen recorder started after the camera recorder.
  */
+/**
+ * The index of the word being said at a moment, or of the last word said
+ * when the moment falls between words. Before the first word, it is 0.
+ */
+export function wordIndexAt(words: { startMs: number }[], ms: number): number {
+  let wordIndex = 0;
+  words.forEach((word, index) => {
+    if (word.startMs <= ms) {
+      wordIndex = index;
+    }
+  });
+  return wordIndex;
+}
+
 export function screenTimeMs(cameraMs: number, screenOffsetMs: number): number {
   return Math.max(0, cameraMs - screenOffsetMs);
 }

@@ -122,7 +122,10 @@ export async function editShort(options: EditShortOptions): Promise<EditShortRes
     const lastWordIndex = transcript.words.length - 1;
     const hasCutsPastLastWord = existing.removedWords.some(([, toWord]) => toWord > lastWordIndex);
     const hasTrimPastRecording = existing.trim.endMs > transcript.durationMs;
-    if (hasCutsPastLastWord || hasTrimPastRecording) {
+    const hasSegmentPastLastWord = existing.segments.some(
+      (segment) => segment.fromWord > Math.max(lastWordIndex, 0),
+    );
+    if (hasCutsPastLastWord || hasTrimPastRecording || hasSegmentPastLastWord) {
       throw new ShortError(
         `${shortPath} does not match transcript.json, which has changed since the edits were made. Remove short.json to start editing again.`,
       );

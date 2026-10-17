@@ -1,10 +1,12 @@
 import { captionAt, chunkCaptions, keptWords, type CaptionChunk } from "../../src/edit/captions.ts";
 import { computeKeepRanges, type KeepRange } from "../../src/edit/cut-list.ts";
+import { clampCrop } from "../../src/edit/layout-geometry.ts";
 import {
   keptDurationMs,
   nextPlayableMs,
   screenTimeMs,
   shortTimeMs,
+  wordIndexAt,
 } from "../../src/edit/playback.ts";
 import {
   removedRangesToIndexes,
@@ -80,6 +82,7 @@ const cropInputs = {
 };
 const cropResetButton = requireElement("crop-reset", HTMLButtonElement);
 const safeZonesToggle = requireElement("safe-zones-toggle", HTMLInputElement);
+const headlineHelp = requireElement("headline-help", HTMLParagraphElement);
 
 const token = readSessionToken(window.location.hash);
 
@@ -98,8 +101,9 @@ let isPlaying = false;
 let segments: ShortProject["segments"] = [];
 let headline: Headline | undefined;
 let screenCrop: ScreenCrop | undefined;
-// Until an accent is chosen, the last word of the headline is the accent.
-let isAccentChosen = false;
+// The accent word picked in the list. Until one is picked, or while the
+// picked word is missing from the headline, the last word is the accent.
+let chosenAccent: string | undefined;
 let captionChunks: CaptionChunk[] = [];
 let preview: ReturnType<typeof createPreview> | undefined;
 
@@ -136,6 +140,7 @@ function updateKeepRanges() {
   captionChunks = chunkCaptions(
     keptWords(transcript.words, keepRanges),
     currentProject().preset.captions,
+    keepRanges,
   );
   const lengthMs = keptDurationMs(keepRanges);
   const limit = lengthMs > shortsLimitMs ? " That is longer than the 3:00 a Short can be." : "";
@@ -161,23 +166,41 @@ function updateWords() {
     // only the later ones are worth a mention.
     const startingLayout = index > 0 ? segmentStarts.get(index) : undefined;
     option.classList.toggle("starts-layout", startingLayout !== undefined);
-    const notes = [
-      isCut ? "cut" : isOutsideTrim ? "outside the trim" : "",
-      startingLayout === undefined
-        ? ""
-        : `${layoutNames[startingLayout].toLowerCase()} layout starts`,
-    ].filter((text) => text !== "");
     const note = option.querySelector(".visually-hidden")!;
-    note.textContent = notes.length > 0 ? `(${notes.join(", ")})` : "";
+    note.textContent = describeWordState({ isCut, isOutsideTrim, startingLayout });
   });
   syncLayoutChoice();
 }
 
-/** Checks the radio button for the layout of the word in focus. */
+/** The hidden note for a word, such as "(cut, face layout starts)", or nothing. */
+function describeWordState(state: {
+  isCut: boolean;
+  isOutsideTrim: boolean;
+  startingLayout: Layout | undefined;
+}): string {
+  const notes: string[] = [];
+  if (state.isCut) {
+    notes.push("cut");
+  } else if (state.isOutsideTrim) {
+    notes.push("outside the trim");
+  }
+  if (state.startingLayout !== undefined) {
+    notes.push(`${layoutNames[state.startingLayout].toLowerCase()} layout starts`);
+  }
+  return notes.length > 0 ? `(${notes.join(", ")})` : "";
+}
+
+/**
+ * Checks the radio button for the layout of the selected words. When they
+ * use more than one layout, no radio button is checked, so any layout can
+ * be chosen for all of them.
+ */
 function syncLayoutChoice() {
-  const layout = layoutAtWord(segments, focusIndex);
+  const target = selection.length > 0 ? selection : [focusIndex];
+  const layouts = new Set(target.map((index) => layoutAtWord(segments, index)));
+  const sharedLayout = layouts.size === 1 ? [...layouts][0] : undefined;
   for (const radio of layoutChoice.querySelectorAll<HTMLInputElement>('input[name="layout"]')) {
-    radio.checked = radio.value === layout;
+    radio.checked = radio.value === sharedLayout;
   }
 }
 
@@ -268,13 +291,7 @@ function showPosition(cameraMs: number) {
   });
 
   // The layout follows the word being said, or the last word said.
-  let wordIndex = 0;
-  words.forEach((word, index) => {
-    if (word.startMs <= cameraMs) {
-      wordIndex = index;
-    }
-  });
-  preview?.showLayout(layoutAtWord(segments, wordIndex), screenCrop);
+  preview?.showLayout(layoutAtWord(segments, wordIndexAt(words, cameraMs)), screenCrop);
   preview?.showCaption(captionAt(captionChunks, cameraMs));
 }
 
@@ -301,16 +318,16 @@ function changeLayout(layout: Layout) {
 
 /**
  * Fills the accent list with the headline's words and returns the accent:
- * the chosen word while the headline still has it, otherwise the last word.
+ * the chosen word while the headline has it, otherwise the last word.
  */
-function updateAccentChoices(text: string, chosenAccent: string | undefined): string | undefined {
+function showAccentChoices(text: string): string | undefined {
   const choices = accentChoices(text);
   accentSelect.replaceChildren(...choices.map((word) => new Option(word, word)));
   accentSelect.disabled = choices.length === 0;
-  const keptChoice =
-    chosenAccent === undefined ? undefined : choices.find((word) => isSameWord(word, chosenAccent));
-  isAccentChosen = keptChoice !== undefined;
-  const accent = keptChoice ?? choices.at(-1);
+  const chosen = chosenAccent;
+  const chosenWord =
+    chosen === undefined ? undefined : choices.find((word) => isSameWord(word, chosen));
+  const accent = chosenWord ?? choices.at(-1);
   if (accent !== undefined) {
     accentSelect.value = accent;
   }
@@ -319,9 +336,9 @@ function updateAccentChoices(text: string, chosenAccent: string | undefined): st
 
 function changeHeadline() {
   const text = headlineInput.value.trim();
-  const accent = updateAccentChoices(text, isAccentChosen ? headline?.accent : undefined);
+  const accent = showAccentChoices(text);
   headline = accent === undefined ? undefined : { text, accent };
-  preview?.showHeadline(headline);
+  showHeadline();
   scheduleSave();
 }
 
@@ -329,16 +346,28 @@ function changeAccent() {
   if (headline === undefined) {
     return;
   }
-  headline = { ...headline, accent: accentSelect.value };
-  isAccentChosen = true;
-  preview?.showHeadline(headline);
+  chosenAccent = accentSelect.value;
+  headline = { ...headline, accent: chosenAccent };
+  showHeadline();
   scheduleSave();
 }
 
-/** Keeps a whole number between a lowest and a highest value. */
-function clampWhole(value: number, lowest: number, highest: number): number {
-  const whole = Number.isFinite(value) ? Math.round(value) : lowest;
-  return Math.min(Math.max(whole, lowest), highest);
+let isHeadlineTooLong = false;
+
+/** Draws the headline in the preview and says whether it fits in its two lines. */
+function showHeadline() {
+  if (preview === undefined) {
+    return;
+  }
+  const fits = preview.showHeadline(headline);
+  headlineHelp.textContent = fits
+    ? "The headline fits in two lines."
+    : "The headline is too long for two lines. Shorten it so all of it shows.";
+  // Announced once, when the headline grows past the space it has.
+  if (!fits && !isHeadlineTooLong) {
+    announce("The headline is too long for two lines.");
+  }
+  isHeadlineTooLong = !fits;
 }
 
 function showCropInputs(crop: ScreenCrop) {
@@ -352,21 +381,45 @@ function fullScreenCrop(): ScreenCrop {
   return { x: 0, y: 0, width: screenVideo.videoWidth, height: screenVideo.videoHeight };
 }
 
-/** Reads the crop fields, keeping the crop inside the shared window. */
+function isSameCrop(first: ScreenCrop, second: ScreenCrop): boolean {
+  return (
+    first.x === second.x &&
+    first.y === second.y &&
+    first.width === second.width &&
+    first.height === second.height
+  );
+}
+
+/**
+ * Reads the crop fields once a value is committed, keeping the crop inside
+ * the shared window. Waiting for the change event, rather than reacting to
+ * every key, means a half-typed value never rewrites the other fields.
+ */
 function changeCrop() {
-  const sourceWidth = screenVideo.videoWidth;
-  const sourceHeight = screenVideo.videoHeight;
-  const x = clampWhole(Number(cropInputs.x.value), 0, sourceWidth - 1);
-  const y = clampWhole(Number(cropInputs.y.value), 0, sourceHeight - 1);
-  screenCrop = {
-    x,
-    y,
-    width: clampWhole(Number(cropInputs.width.value), 1, sourceWidth - x),
-    height: clampWhole(Number(cropInputs.height.value), 1, sourceHeight - y),
+  const typedCrop = {
+    x: readWholeNumber(cropInputs.x, 0),
+    y: readWholeNumber(cropInputs.y, 0),
+    width: readWholeNumber(cropInputs.width, 1),
+    height: readWholeNumber(cropInputs.height, 1),
   };
+  screenCrop = clampCrop(typedCrop, windowSize());
   showCropInputs(screenCrop);
+  if (!isSameCrop(typedCrop, screenCrop)) {
+    announce("The crop was changed to stay inside the window.");
+  }
   showPosition(previewMs());
   scheduleSave();
+}
+
+/** A field's value as a whole number, or the fallback when the field is empty or invalid. */
+function readWholeNumber(input: HTMLInputElement, fallback: number): number {
+  const value = Number(input.value);
+  const isUsable = input.value.trim() !== "" && Number.isFinite(value);
+  return isUsable ? Math.round(value) : fallback;
+}
+
+function windowSize() {
+  return { width: screenVideo.videoWidth, height: screenVideo.videoHeight };
 }
 
 function resetCrop() {
@@ -384,7 +437,17 @@ function enableCrop() {
   cropInputs.y.max = String(videoHeight - 1);
   cropInputs.width.max = String(videoWidth);
   cropInputs.height.max = String(videoHeight);
+  // A crop saved for an earlier, larger recording is brought inside this one.
+  if (screenCrop !== undefined) {
+    const fittedCrop = clampCrop(screenCrop, windowSize());
+    if (!isSameCrop(fittedCrop, screenCrop)) {
+      screenCrop = fittedCrop;
+      announce("The saved crop was larger than the window, so it now fits inside it.");
+      scheduleSave();
+    }
+  }
   showCropInputs(screenCrop ?? fullScreenCrop());
+  showPosition(previewMs());
   cropFieldset.disabled = false;
 }
 
@@ -626,8 +689,18 @@ async function initialise() {
     project.preset,
   );
   headlineInput.value = headline?.text ?? "";
-  updateAccentChoices(headline?.text ?? "", headline?.accent);
-  preview.showHeadline(headline);
+  // A saved accent that is the last word may only be the default, so it is
+  // treated as chosen only when it is another word.
+  const lastHeadlineWord = accentChoices(headline?.text ?? "").at(-1);
+  const isSavedAccentChosen =
+    headline !== undefined &&
+    lastHeadlineWord !== undefined &&
+    !isSameWord(headline.accent, lastHeadlineWord);
+  chosenAccent = isSavedAccentChosen ? headline?.accent : undefined;
+  showAccentChoices(headline?.text ?? "");
+  showHeadline();
+  // The headline's size depends on the font, which may still be loading.
+  void document.fonts.ready.then(showHeadline);
   for (const input of [trimStartInput, trimEndInput]) {
     input.max = String(project.transcript.durationMs);
     input.disabled = false;
@@ -644,6 +717,9 @@ async function initialise() {
   } else {
     screenVideo.addEventListener("loadedmetadata", enableCrop, { once: true });
   }
+  screenVideo.addEventListener("error", () =>
+    announce("The window recording could not be loaded, so the preview cannot show or crop it."),
+  );
   layoutChoice.addEventListener("change", (event) => {
     const { value } = event.target as HTMLInputElement;
     if (isLayout(value)) {
@@ -653,7 +729,7 @@ async function initialise() {
   headlineInput.addEventListener("input", changeHeadline);
   accentSelect.addEventListener("change", changeAccent);
   for (const input of Object.values(cropInputs)) {
-    input.addEventListener("input", changeCrop);
+    input.addEventListener("change", changeCrop);
   }
   cropResetButton.addEventListener("click", resetCrop);
   safeZonesToggle.addEventListener("change", () =>

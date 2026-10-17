@@ -1,4 +1,5 @@
 import { z } from "zod";
+import { minimumSafeArea } from "../edit/layout-geometry.ts";
 import { frame } from "./frame.ts";
 import { layoutSchema } from "./layout.ts";
 
@@ -25,12 +26,12 @@ const safeZonesSchema = z
     left: pixels,
     right: pixels,
   })
-  .refine((zones) => zones.top + zones.bottom < frame.height, {
-    message: "The top and bottom safe zones must leave part of the frame uncovered.",
+  .refine((zones) => frame.height - zones.top - zones.bottom >= minimumSafeArea.height, {
+    message: `The top and bottom safe zones must leave at least ${minimumSafeArea.height} pixels of height for the headline, the captions and the camera.`,
     path: ["bottom"],
   })
-  .refine((zones) => zones.left + zones.right < frame.width, {
-    message: "The left and right safe zones must leave part of the frame uncovered.",
+  .refine((zones) => frame.width - zones.left - zones.right >= minimumSafeArea.width, {
+    message: `The left and right safe zones must leave at least ${minimumSafeArea.width} pixels of width for the camera.`,
     path: ["right"],
   });
 

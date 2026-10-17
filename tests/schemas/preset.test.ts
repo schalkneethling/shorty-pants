@@ -42,4 +42,22 @@ describe("parsePreset", () => {
     const result = parsePreset(preset);
     expect(result.success).toBe(false);
   });
+
+  test("rejects safe zones that leave too little height for the headline, captions and camera", () => {
+    const preset = {
+      ...defaultPreset,
+      safeZones: { ...defaultPreset.safeZones, top: 700, bottom: 800 },
+    };
+    const result = parsePreset(preset);
+    expect(result.success).toBe(false);
+    expect(result.error?.issues[0]?.message).toContain("888");
+  });
+
+  test("rejects safe zones that leave too little width for the circle camera", () => {
+    const preset = {
+      ...defaultPreset,
+      safeZones: { ...defaultPreset.safeZones, left: 400, right: 400 },
+    };
+    expect(parsePreset(preset).success).toBe(false);
+  });
 });
