@@ -11,8 +11,8 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, beforeEach, describe, expect, test } from "vite-plus/test";
 import { parseTranscript } from "../../src/schemas/transcript.ts";
-import { transcribeShort } from "../../src/transcribe/transcribe.ts";
-import { createFakeCommands } from "../helpers/fake-commands.ts";
+import { transcribeShort, type TranscribeOptions } from "../../src/transcribe/transcribe.ts";
+import { createFakeCommands, type FakeCommands } from "../helpers/fake-commands.ts";
 
 let workspace: string;
 let shortFolder: string;
@@ -44,8 +44,10 @@ afterEach(() => {
   rmSync(workspace, { recursive: true, force: true });
 });
 
-function transcribe(overrides: Partial<Parameters<typeof transcribeShort>[0]> = {}) {
-  const commands = createFakeCommands();
+function transcribe(
+  overrides: Partial<TranscribeOptions> = {},
+  commands: FakeCommands = createFakeCommands(),
+) {
   return {
     commands,
     result: transcribeShort({
@@ -60,10 +62,9 @@ function transcribe(overrides: Partial<Parameters<typeof transcribeShort>[0]> = 
 }
 
 describe("transcribeShort", () => {
-  test("extracts 16 kHz mono audio from the camera track for whisper", async () => {
+  test("extracts 16 kHz mono audio from the camera track, aligned to the start of the video", async () => {
     const { commands, result } = transcribe();
     await result;
-    const audioPath = join(shortFolder, "takes", "audio.wav");
     expect(commands.calls[0]).toEqual({
       command: "ffmpeg",
       args: [
@@ -75,18 +76,20 @@ describe("transcribeShort", () => {
         "-i",
         join(shortFolder, "takes", "cam.webm"),
         "-vn",
+        "-af",
+        "aresample=async=1:first_pts=0",
         "-ac",
         "1",
         "-ar",
         "16000",
         "-c:a",
         "pcm_s16le",
-        audioPath,
+        join(shortFolder, "takes", "audio.wav"),
       ],
     });
   });
 
-  test("runs whisper-cli with one word per segment and JSON output", async () => {
+  test("runs whisper-cli with full JSON output, which has the token times", async () => {
     const { commands, result } = transcribe();
     await result;
     const whisperCall = commands.calls.find((call) => call.command === "whisper-cli");
@@ -97,10 +100,7 @@ describe("transcribeShort", () => {
       join(shortFolder, "takes", "audio.wav"),
       "-l",
       "en",
-      "-ml",
-      "1",
-      "-sow",
-      "-oj",
+      "-ojf",
       "-of",
       join(shortFolder, "takes", "whisper"),
       "-np",
@@ -122,21 +122,15 @@ describe("transcribeShort", () => {
       "positioning",
       "ignores",
       "scroll.",
-      "Here's",
+      "“Here's”",
       "why",
     ]);
   });
 
   test("keeps word times inside the recording when whisper overshoots the end", async () => {
-    const commands = createFakeCommands({ durationSeconds: "4.400000" });
-    const transcript = await transcribeShort({
-      shortFolder,
-      modelPath,
-      whisperBinary: "whisper-cli",
-      language: "en",
-      run: commands.run,
-    });
-    expect(transcript.words.at(-1)).toEqual({ text: "why", startMs: 4250, endMs: 4400 });
+    const { result } = transcribe({}, createFakeCommands({ durationSeconds: "3.800000" }));
+    const transcript = await result;
+    expect(transcript.words.at(-1)).toEqual({ text: "why", startMs: 3600, endMs: 3800 });
   });
 
   test("reports a folder without a recorded take", async () => {
@@ -145,46 +139,70 @@ describe("transcribeShort", () => {
     await expect(result).rejects.toThrow(/No recorded take in .*short record/);
   });
 
-  test("reports a missing model with the command that downloads it", async () => {
-    const { result } = transcribe({ modelPath: join(workspace, "missing.bin") });
-    await expect(result).rejects.toThrow(/whisper model .*missing\.bin.*curl/s);
+  test("reports a takes.json that is not valid JSON", async () => {
+    writeFileSync(join(shortFolder, "takes.json"), "{bad");
+    const { result } = transcribe();
+    await expect(result).rejects.toThrow(/takes\.json is not valid/);
+  });
+
+  test("reports a missing model with a download command that is safe to paste", async () => {
+    const missing = join(workspace, "it's here", "ggml-small.en.bin");
+    const { result } = transcribe({ modelPath: missing });
+    await expect(result).rejects.toThrow(
+      `curl --fail --create-dirs -L -o '${join(workspace, "it'\\''s here", "ggml-small.en.bin")}' 'https://huggingface.co/ggerganov/whisper.cpp/resolve/main/ggml-small.en.bin'`,
+    );
+  });
+
+  test("does not invent a download address for a model it does not know", async () => {
+    const { result } = transcribe({ modelPath: join(workspace, "my-model.bin") });
+    await expect(result).rejects.toThrow(
+      /does not exist\. Download a ggml model from https:\/\/huggingface\.co\/ggerganov\/whisper\.cpp/,
+    );
+    await expect(
+      transcribe({ modelPath: join(workspace, "my-model.bin") }).result,
+    ).rejects.not.toThrow(/curl/);
   });
 
   test("reports a missing ffmpeg with how to install it", async () => {
-    const commands = createFakeCommands({ missing: ["ffmpeg"] });
-    const result = transcribeShort({
-      shortFolder,
-      modelPath,
-      whisperBinary: "whisper-cli",
-      language: "en",
-      run: commands.run,
-    });
+    const { result } = transcribe({}, createFakeCommands({ missing: ["ffmpeg"] }));
     await expect(result).rejects.toThrow(/ffmpeg was not found.*brew install ffmpeg/);
   });
 
   test("reports a missing whisper-cli with how to install it", async () => {
-    const commands = createFakeCommands({ missing: ["whisper-cli"] });
-    const result = transcribeShort({
-      shortFolder,
-      modelPath,
-      whisperBinary: "whisper-cli",
-      language: "en",
-      run: commands.run,
-    });
+    const { result } = transcribe({}, createFakeCommands({ missing: ["whisper-cli"] }));
     await expect(result).rejects.toThrow(/whisper-cli was not found.*brew install whisper-cpp/);
     expect(existsSync(join(shortFolder, "transcript.json"))).toBe(false);
   });
 
+  test("names SHORTY_PANTS_WHISPER_BIN when a custom whisper binary is missing", async () => {
+    const { result } = transcribe(
+      { whisperBinary: "/opt/whisper/bin/whisper-cli" },
+      createFakeCommands({ missing: ["/opt/whisper/bin/whisper-cli"] }),
+    );
+    await expect(result).rejects.toThrow(/was not found\. Check SHORTY_PANTS_WHISPER_BIN/);
+  });
+
+  test("reports whisper-cli finishing without writing its output", async () => {
+    const { result } = transcribe({}, createFakeCommands({ whisperWritesNothing: true }));
+    await expect(result).rejects.toThrow(/whisper-cli finished without writing .*whisper\.json/);
+  });
+
   test("reports whisper output it cannot read without writing a transcript", async () => {
-    const commands = createFakeCommands({ whisperOutput: "{}" });
-    const result = transcribeShort({
-      shortFolder,
-      modelPath,
-      whisperBinary: "whisper-cli",
-      language: "en",
-      run: commands.run,
-    });
+    const { result } = transcribe({}, createFakeCommands({ whisperOutput: "{}" }));
     await expect(result).rejects.toThrow(/not in the expected format/);
     expect(existsSync(join(shortFolder, "transcript.json"))).toBe(false);
+  });
+
+  test("refuses to replace the transcript once short.json refers to its words", async () => {
+    writeFileSync(join(shortFolder, "short.json"), "{}");
+    const { commands, result } = transcribe();
+    await expect(result).rejects.toThrow(/short\.json .*--force/);
+    expect(commands.calls).toEqual([]);
+  });
+
+  test("replaces the transcript when short.json exists and replacing is allowed", async () => {
+    writeFileSync(join(shortFolder, "short.json"), "{}");
+    const { result } = transcribe({ replaceEditedTranscript: true });
+    await expect(result).resolves.toMatchObject({ durationMs: 5000 });
   });
 });

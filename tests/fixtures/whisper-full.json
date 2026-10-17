@@ -1,0 +1,449 @@
+{
+  "systeminfo": "WHISPER : COREML = 0 | OPENVINO = 0 | CPU : NEON = 1 | ARM_FMA = 1 | METAL = 1 | ",
+  "model": {
+    "type": "small",
+    "multilingual": false,
+    "vocab": 51864,
+    "audio": {
+      "ctx": 1500,
+      "state": 768,
+      "head": 12,
+      "layer": 12
+    },
+    "text": {
+      "ctx": 448,
+      "state": 768,
+      "head": 12,
+      "layer": 12
+    },
+    "mels": 80,
+    "ftype": 1
+  },
+  "params": {
+    "model": "models/ggml-small.en.bin",
+    "language": "en",
+    "translate": false
+  },
+  "result": {
+    "language": "en"
+  },
+  "transcription": [
+    {
+      "timestamps": {
+        "from": "",
+        "to": ""
+      },
+      "offsets": {
+        "from": 0,
+        "to": 1800
+      },
+      "text": " Anchor positioning ignores scroll.",
+      "tokens": [
+        {
+          "text": "[_BEG_]",
+          "timestamps": {
+            "from": "",
+            "to": ""
+          },
+          "offsets": {
+            "from": 0,
+            "to": 0
+          },
+          "id": 50363,
+          "p": 0.9,
+          "t_dtw": -1
+        },
+        {
+          "text": " Anchor",
+          "timestamps": {
+            "from": "",
+            "to": ""
+          },
+          "offsets": {
+            "from": 0,
+            "to": 300
+          },
+          "id": 1,
+          "p": 0.9,
+          "t_dtw": -1
+        },
+        {
+          "text": " position",
+          "timestamps": {
+            "from": "",
+            "to": ""
+          },
+          "offsets": {
+            "from": 320,
+            "to": 600
+          },
+          "id": 2,
+          "p": 0.9,
+          "t_dtw": -1
+        },
+        {
+          "text": "ing",
+          "timestamps": {
+            "from": "",
+            "to": ""
+          },
+          "offsets": {
+            "from": 600,
+            "to": 900
+          },
+          "id": 3,
+          "p": 0.9,
+          "t_dtw": -1
+        },
+        {
+          "text": " ignores",
+          "timestamps": {
+            "from": "",
+            "to": ""
+          },
+          "offsets": {
+            "from": 950,
+            "to": 1300
+          },
+          "id": 4,
+          "p": 0.9,
+          "t_dtw": -1
+        },
+        {
+          "text": " scroll",
+          "timestamps": {
+            "from": "",
+            "to": ""
+          },
+          "offsets": {
+            "from": 1350,
+            "to": 1700
+          },
+          "id": 5,
+          "p": 0.9,
+          "t_dtw": -1
+        },
+        {
+          "text": ".",
+          "timestamps": {
+            "from": "",
+            "to": ""
+          },
+          "offsets": {
+            "from": 1700,
+            "to": 1750
+          },
+          "id": 6,
+          "p": 0.9,
+          "t_dtw": -1
+        },
+        {
+          "text": "[_TT_90]",
+          "timestamps": {
+            "from": "",
+            "to": ""
+          },
+          "offsets": {
+            "from": 1800,
+            "to": 1800
+          },
+          "id": 50453,
+          "p": 0.9,
+          "t_dtw": -1
+        }
+      ]
+    },
+    {
+      "timestamps": {
+        "from": "",
+        "to": ""
+      },
+      "offsets": {
+        "from": 1800,
+        "to": 3900
+      },
+      "text": " (upbeat music) ♪ “Here's” why",
+      "tokens": [
+        {
+          "text": "[_BEG_]",
+          "timestamps": {
+            "from": "",
+            "to": ""
+          },
+          "offsets": {
+            "from": 1800,
+            "to": 1800
+          },
+          "id": 50363,
+          "p": 0.9,
+          "t_dtw": -1
+        },
+        {
+          "text": " (",
+          "timestamps": {
+            "from": "",
+            "to": ""
+          },
+          "offsets": {
+            "from": 1800,
+            "to": 1900
+          },
+          "id": 7,
+          "p": 0.9,
+          "t_dtw": -1
+        },
+        {
+          "text": "up",
+          "timestamps": {
+            "from": "",
+            "to": ""
+          },
+          "offsets": {
+            "from": 1900,
+            "to": 2000
+          },
+          "id": 8,
+          "p": 0.9,
+          "t_dtw": -1
+        },
+        {
+          "text": "beat",
+          "timestamps": {
+            "from": "",
+            "to": ""
+          },
+          "offsets": {
+            "from": 2000,
+            "to": 2100
+          },
+          "id": 9,
+          "p": 0.9,
+          "t_dtw": -1
+        },
+        {
+          "text": " music",
+          "timestamps": {
+            "from": "",
+            "to": ""
+          },
+          "offsets": {
+            "from": 2100,
+            "to": 2400
+          },
+          "id": 10,
+          "p": 0.9,
+          "t_dtw": -1
+        },
+        {
+          "text": ")",
+          "timestamps": {
+            "from": "",
+            "to": ""
+          },
+          "offsets": {
+            "from": 2400,
+            "to": 2500
+          },
+          "id": 11,
+          "p": 0.9,
+          "t_dtw": -1
+        },
+        {
+          "text": " ♪",
+          "timestamps": {
+            "from": "",
+            "to": ""
+          },
+          "offsets": {
+            "from": 2500,
+            "to": 3100
+          },
+          "id": 12,
+          "p": 0.9,
+          "t_dtw": -1
+        },
+        {
+          "text": " “",
+          "timestamps": {
+            "from": "",
+            "to": ""
+          },
+          "offsets": {
+            "from": 3150,
+            "to": 3200
+          },
+          "id": 13,
+          "p": 0.9,
+          "t_dtw": -1
+        },
+        {
+          "text": " Here",
+          "timestamps": {
+            "from": "",
+            "to": ""
+          },
+          "offsets": {
+            "from": 3200,
+            "to": 3400
+          },
+          "id": 14,
+          "p": 0.9,
+          "t_dtw": -1
+        },
+        {
+          "text": "'s",
+          "timestamps": {
+            "from": "",
+            "to": ""
+          },
+          "offsets": {
+            "from": 3400,
+            "to": 3500
+          },
+          "id": 15,
+          "p": 0.9,
+          "t_dtw": -1
+        },
+        {
+          "text": "”",
+          "timestamps": {
+            "from": "",
+            "to": ""
+          },
+          "offsets": {
+            "from": 3500,
+            "to": 3550
+          },
+          "id": 16,
+          "p": 0.9,
+          "t_dtw": -1
+        },
+        {
+          "text": " why",
+          "timestamps": {
+            "from": "",
+            "to": ""
+          },
+          "offsets": {
+            "from": 3600,
+            "to": 3900
+          },
+          "id": 17,
+          "p": 0.9,
+          "t_dtw": -1
+        },
+        {
+          "text": "[_TT_195]",
+          "timestamps": {
+            "from": "",
+            "to": ""
+          },
+          "offsets": {
+            "from": 3900,
+            "to": 3900
+          },
+          "id": 50558,
+          "p": 0.9,
+          "t_dtw": -1
+        }
+      ]
+    },
+    {
+      "timestamps": {
+        "from": "",
+        "to": ""
+      },
+      "offsets": {
+        "from": 4000,
+        "to": 6000
+      },
+      "text": " [BLANK_AUDIO]",
+      "tokens": [
+        {
+          "text": " [",
+          "timestamps": {
+            "from": "",
+            "to": ""
+          },
+          "offsets": {
+            "from": 4000,
+            "to": 4100
+          },
+          "id": 18,
+          "p": 0.9,
+          "t_dtw": -1
+        },
+        {
+          "text": "BL",
+          "timestamps": {
+            "from": "",
+            "to": ""
+          },
+          "offsets": {
+            "from": 4100,
+            "to": 4300
+          },
+          "id": 19,
+          "p": 0.9,
+          "t_dtw": -1
+        },
+        {
+          "text": "ANK",
+          "timestamps": {
+            "from": "",
+            "to": ""
+          },
+          "offsets": {
+            "from": 4300,
+            "to": 4500
+          },
+          "id": 20,
+          "p": 0.9,
+          "t_dtw": -1
+        },
+        {
+          "text": "_",
+          "timestamps": {
+            "from": "",
+            "to": ""
+          },
+          "offsets": {
+            "from": 4500,
+            "to": 4600
+          },
+          "id": 21,
+          "p": 0.9,
+          "t_dtw": -1
+        },
+        {
+          "text": "AUDIO",
+          "timestamps": {
+            "from": "",
+            "to": ""
+          },
+          "offsets": {
+            "from": 4600,
+            "to": 5900
+          },
+          "id": 22,
+          "p": 0.9,
+          "t_dtw": -1
+        },
+        {
+          "text": "]",
+          "timestamps": {
+            "from": "",
+            "to": ""
+          },
+          "offsets": {
+            "from": 5900,
+            "to": 6000
+          },
+          "id": 23,
+          "p": 0.9,
+          "t_dtw": -1
+        }
+      ]
+    }
+  ]
+}

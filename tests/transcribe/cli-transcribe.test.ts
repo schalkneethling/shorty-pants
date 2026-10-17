@@ -113,6 +113,24 @@ describe("short transcribe", () => {
     expect(output.stderr).toContain("curl");
   });
 
+  test("refuses to replace a transcript that short.json refers to, unless --force is given", async () => {
+    writeFileSync(join(shortFolder, "short.json"), "{}");
+    const refused = createIo();
+    expect(await run(["transcribe", shortFolder], refused.io, context())).toBe(1);
+    expect(refused.output.stderr).toContain("--force");
+
+    const forced = createIo();
+    expect(await run(["transcribe", shortFolder, "--force"], forced.io, context())).toBe(0);
+    expect(forced.output.stdout).toContain("Transcribed 6 words");
+  });
+
+  test("prints its usage for --help and exits with 0", async () => {
+    const { io, output } = createIo();
+    expect(await run(["transcribe", "--help"], io, context())).toBe(0);
+    expect(output.stdout).toContain("Usage: short transcribe");
+    expect(output.stderr).toBe("");
+  });
+
   test("without a folder is a usage error", async () => {
     const { io, output } = createIo();
     expect(await run(["transcribe"], io, context())).toBe(2);

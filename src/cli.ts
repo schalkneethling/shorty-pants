@@ -125,16 +125,21 @@ async function transcribeFolder(
   settings: WhisperSettings,
   io: CliIo,
   context: CliContext,
+  replaceEditedTranscript = false,
 ) {
-  io.stdout(`Transcribing with ${settings.modelPath}\n`);
-  const transcript = await transcribeShort({ shortFolder, ...settings, run: context.runCommand });
+  const transcript = await transcribeShort({
+    shortFolder,
+    ...settings,
+    run: context.runCommand,
+    replaceEditedTranscript,
+  });
   io.stdout(
-    `Transcribed ${transcript.words.length} words into ${join(shortFolder, "transcript.json")}\n`,
+    `Transcribed ${transcript.words.length} words with ${transcript.model} into ${join(shortFolder, "transcript.json")}\n`,
   );
 }
 
 const transcribeUsage =
-  "Usage: short transcribe <short folder> [--model <file>] [--language <code>]\n";
+  "Usage: short transcribe <short folder> [--model <file>] [--language <code>] [--force]\n";
 
 async function transcribeCommand(args: string[], io: CliIo, context: CliContext): Promise<number> {
   let parsed;
@@ -142,11 +147,20 @@ async function transcribeCommand(args: string[], io: CliIo, context: CliContext)
     parsed = parseArgs({
       args,
       allowPositionals: true,
-      options: { model: { type: "string" }, language: { type: "string" } },
+      options: {
+        model: { type: "string" },
+        language: { type: "string" },
+        force: { type: "boolean", default: false },
+        help: { type: "boolean", default: false },
+      },
     });
   } catch {
     io.stderr(transcribeUsage);
     return 2;
+  }
+  if (parsed.values.help) {
+    io.stdout(transcribeUsage);
+    return 0;
   }
 
   const [folder] = parsed.positionals;
@@ -160,6 +174,7 @@ async function transcribeCommand(args: string[], io: CliIo, context: CliContext)
     whisperSettings(context, parsed.values),
     io,
     context,
+    parsed.values.force,
   );
   return 0;
 }
@@ -175,28 +190,37 @@ async function recordCommand(args: string[], io: CliIo, context: CliContext): Pr
       options: {
         root: { type: "string" },
         "no-open": { type: "boolean", default: false },
+        help: { type: "boolean", default: false },
       },
     });
   } catch {
     io.stderr(recordUsage);
     return 2;
   }
+  if (parsed.values.help) {
+    io.stdout(recordUsage);
+    return 0;
+  }
 
   // An empty value counts as not given, and relative paths are resolved
   // against the folder the command runs in.
-  const configuredRoot = [parsed.values.root, context.environment.SHORTY_PANTS_SHORTS_ROOT].find(
-    (value) => value !== undefined && value !== "",
+  const configuredRoot = firstGiven(
+    parsed.values.root,
+    context.environment.SHORTY_PANTS_SHORTS_ROOT,
   );
   const shortsRoot = resolve(context.cwd, configuredRoot ?? "shorts");
   const shouldOpen = !parsed.values["no-open"];
 
-  // Ctrl+C stops waiting for the browser and shuts the server down.
+  // While waiting for the browser, Ctrl+C shuts the server down. Once the take
+  // is saved, the handler is removed, so Ctrl+C during transcription stops
+  // the command as usual.
   const controller = new AbortController();
   const cancel = () => controller.abort();
   process.once("SIGINT", cancel);
 
+  let result;
   try {
-    const result = await recordShort({
+    result = await recordShort({
       shortsRoot,
       title: parsed.positionals.join(" "),
       now: context.now,
@@ -210,32 +234,32 @@ async function recordCommand(args: string[], io: CliIo, context: CliContext): Pr
         }
       },
     });
-
-    if (result.outcome === "cancelled") {
-      io.stdout(`Recording cancelled. The folder ${result.folder} was left in place.\n`);
-      return 1;
-    }
-    io.stdout(`Saved the take in ${result.folder}\n`);
-
-    // The take is safe on disk, so a transcription problem never fails the recording.
-    const settings = whisperSettings(context);
-    const transcribeLater = `Run short transcribe "${result.folder}" to transcribe it.`;
-    if (!existsSync(settings.modelPath)) {
-      io.stdout(
-        `No whisper model at ${settings.modelPath}. Once one is set up, ${transcribeLater}\n`,
-      );
-      return 0;
-    }
-    try {
-      await transcribeFolder(result.folder, settings, io, context);
-    } catch (error) {
-      const reason = error instanceof Error ? error.message : String(error);
-      io.stderr(`The take was saved, but transcription failed. ${reason}\n${transcribeLater}\n`);
-    }
-    return 0;
   } finally {
     process.removeListener("SIGINT", cancel);
   }
+
+  if (result.outcome === "cancelled") {
+    io.stdout(`Recording cancelled. The folder ${result.folder} was left in place.\n`);
+    return 1;
+  }
+  io.stdout(`Saved the take in ${result.folder}\n`);
+
+  // The take is safe on disk, so a transcription problem never fails the recording.
+  const settings = whisperSettings(context);
+  const transcribeLater = `Run short transcribe "${result.folder}" to transcribe it.`;
+  if (!existsSync(settings.modelPath)) {
+    io.stdout(
+      `No whisper model at ${settings.modelPath}. Once one is set up, ${transcribeLater}\n`,
+    );
+    return 0;
+  }
+  try {
+    await transcribeFolder(result.folder, settings, io, context);
+  } catch (error) {
+    const reason = error instanceof Error ? error.message : String(error);
+    io.stderr(`The take was saved, but transcription failed. ${reason}\n${transcribeLater}\n`);
+  }
+  return 0;
 }
 
 const commands: CommandDescription[] = [

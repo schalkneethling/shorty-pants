@@ -24,6 +24,21 @@ export class CommandFailedError extends ShortError {
   override name = "CommandFailedError";
 }
 
+/**
+ * The most useful part of a program's error output. Tools such as whisper-cli
+ * print their usage text after the error, so lines that mention an error come
+ * first; otherwise the last few lines are used.
+ */
+function describeFailure(stderr: string, exitCode: unknown): string {
+  const lines = stderr
+    .split("\n")
+    .map((line) => line.trim())
+    .filter((line) => line !== "");
+  const errorLines = lines.filter((line) => /\berror\b/i.test(line));
+  const chosen = errorLines.length > 0 ? errorLines : lines.slice(-5);
+  return chosen.length > 0 ? chosen.join("\n") : `It stopped with exit code ${String(exitCode)}.`;
+}
+
 export const runCommand: CommandRunner = async (command, args) => {
   try {
     const { stdout } = await execFileAsync(command, args, {
@@ -32,11 +47,13 @@ export const runCommand: CommandRunner = async (command, args) => {
     });
     return { stdout };
   } catch (error) {
-    const failure = error as { code?: unknown; stderr?: string };
+    const failure = error as { code?: unknown; signal?: unknown; stderr?: string };
     if (failure.code === "ENOENT") {
       throw new CommandNotFoundError(command);
     }
-    const details = failure.stderr?.trim().split("\n").slice(-5).join("\n") ?? "";
-    throw new CommandFailedError(`${command} failed. ${details}`.trim());
+    const exitCode = failure.signal ?? failure.code;
+    throw new CommandFailedError(
+      `${command} failed. ${describeFailure(failure.stderr ?? "", exitCode)}`,
+    );
   }
 };

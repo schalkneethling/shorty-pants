@@ -219,6 +219,33 @@ describe("short record", () => {
     expect(output.stderr).toContain("short transcribe");
   });
 
+  test("prints its usage for --help without starting the recorder", async () => {
+    const { io, output } = createIo();
+    const { context, opened } = createContext();
+    expect(await run(["record", "--help"], io, context)).toBe(0);
+    expect(output.stdout).toContain("Usage: short record");
+    expect(opened).toHaveLength(0);
+  });
+
+  test("lets Ctrl+C stop the command while the saved take is transcribed", async () => {
+    const modelPath = join(workspace, "ggml-small.en.bin");
+    writeFileSync(modelPath, "model");
+    const commands = createFakeCommands();
+    const listenersBefore = process.listenerCount("SIGINT");
+    let listenersDuringTranscription = -1;
+    const { io } = createIo();
+    const { context } = createContext({
+      environment: { SHORTY_PANTS_WHISPER_MODEL: modelPath },
+      runCommand: async (command, args) => {
+        listenersDuringTranscription = process.listenerCount("SIGINT");
+        return commands.run(command, args);
+      },
+    });
+
+    await run(["record", "Scroll"], io, context);
+    expect(listenersDuringTranscription).toBe(listenersBefore);
+  });
+
   test("reports a missing recorder page", async () => {
     const { io, output } = createIo();
     const { context } = createContext({ webRoot: join(workspace, "missing") });

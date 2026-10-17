@@ -10,11 +10,11 @@ Takes are transcribed locally with [whisper.cpp](https://github.com/ggml-org/whi
 
 ```bash
 brew install ffmpeg whisper-cpp
-curl --create-dirs -L -o ~/.cache/shorty-pants/models/ggml-small.en.bin \
+curl --fail --create-dirs -L -o ~/.cache/shorty-pants/models/ggml-small.en.bin \
   https://huggingface.co/ggerganov/whisper.cpp/resolve/main/ggml-small.en.bin
 ```
 
-`short record` transcribes each take as soon as it is saved, and `short transcribe <short folder>` transcribes one again. The words and their times are written to `transcript.json` in the short folder.
+`short record` transcribes each take as soon as it is saved, and `short transcribe <short folder>` transcribes one again. The words and their times are written to `transcript.json` in the short folder. Once a short has edits in `short.json`, which refer to words by their position, `short transcribe` only replaces the transcript with `--force`.
 
 The model is `~/.cache/shorty-pants/models/ggml-small.en.bin` unless `--model` or `SHORTY_PANTS_WHISPER_MODEL` names another one. `SHORTY_PANTS_WHISPER_BIN` sets the whisper-cli binary, and `--language` or `SHORTY_PANTS_WHISPER_LANGUAGE` sets the spoken language, which is English by default.
 
