@@ -1,0 +1,17 @@
+node_modules
+dist
+*.log
+.DS_Store
+
+# dotenv environment variable files
+.env
+.env.*
+!.env.example
+
+# Calavera artifact cache; the lock file and state are committed
+.calavera/cache/
+.calavera/packages/
+
+# Recordings and renders are too large for Git
+shorts/*/takes/
+shorts/*/out/

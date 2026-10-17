@@ -1,0 +1,29 @@
+{
+  "schemaVersion": 1,
+  "artifacts": [
+    {
+      "id": "skill-npm-publishing-best-practices",
+      "type": "skill",
+      "package": "@schalkneethling/calavera-skill-npm-publishing-best-practices",
+      "version": "0.2.1",
+      "resolved": "https://registry.npmjs.org/@schalkneethling/calavera-skill-npm-publishing-best-practices/-/calavera-skill-npm-publishing-best-practices-0.2.1.tgz",
+      "integrity": "sha512-jI08zZRTHYJRargZJU1nYf+swVmfUHZ7Jy2MgxT0ek7bj7vVvWBxHtWYVZKO4hsIx+dK2iuL3V7OULZtipZKmA==",
+      "tag": "latest",
+      "manifestVersion": 1,
+      "destination": ".agents/skills/npm-publishing-best-practices",
+      "payloadHash": "71240547611f24b00d6a63e695f63c572a69a06a5b8a9cb4ae6bfec13c5e1e3c"
+    },
+    {
+      "id": "skill-npm-trusted-publishing-github-workflow",
+      "type": "skill",
+      "package": "@schalkneethling/calavera-skill-npm-trusted-publishing-github-workflow",
+      "version": "0.2.2",
+      "resolved": "https://registry.npmjs.org/@schalkneethling/calavera-skill-npm-trusted-publishing-github-workflow/-/calavera-skill-npm-trusted-publishing-github-workflow-0.2.2.tgz",
+      "integrity": "sha512-PLsA4YxDK89jur+ojlv+nYiUCBmnDMULeVa83WkiyCgDFQE5JPfUKSb0co6bos1LsgP9FDweqToBQXwJgC1JXQ==",
+      "tag": "latest",
+      "manifestVersion": 1,
+      "destination": ".agents/skills/npm-trusted-publishing-github-workflow",
+      "payloadHash": "28522ac559ad8aa5ada7e0aa07f156675e3e9489d5f91873b2f508e758c1e058"
+    }
+  ]
+}

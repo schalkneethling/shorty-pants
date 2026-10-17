@@ -1,0 +1,20 @@
+{
+  "extends": [
+    "stylelint-plugin-logical-css/configs/recommended"
+  ],
+  "ignoreFiles": [
+    "coverage/**",
+    "dist/**",
+    "**/dist/**",
+    "**/dist-types/**",
+    "dist-web/**",
+    "node_modules/**"
+  ],
+  "plugins": [
+    "stylelint-order",
+    "stylelint-plugin-logical-css"
+  ],
+  "rules": {
+    "order/properties-alphabetical-order": true
+  }
+}

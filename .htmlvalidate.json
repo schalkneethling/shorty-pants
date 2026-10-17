@@ -1,0 +1,7 @@
+{
+  "extends": [
+    "html-validate:recommended",
+    "html-validate:document"
+  ],
+  "rules": {}
+}

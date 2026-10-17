@@ -1,0 +1,35 @@
+{
+  "$schema": "https://calavera.schalkneethling.com/calavera.config.schema.json",
+  "version": 1,
+  "profile": "default",
+  "packageManager": "pnpm",
+  "integrations": [
+    "editorconfig",
+    "html-validate",
+    "knip",
+    "stylelint-order",
+    "stylelint-logical-css",
+    "github-repository-controls"
+  ],
+  "scripts": {
+    "lint": true,
+    "lint:fix": true,
+    "quality": true
+  },
+  "ai": [
+    {
+      "id": "skill-npm-publishing-best-practices"
+    },
+    {
+      "id": "skill-npm-trusted-publishing-github-workflow"
+    }
+  ],
+  "integrationOptions": {
+    "github-repository-controls": {
+      "repository": "schalkneethling/shorty-pants",
+      "requiredChecks": [],
+      "mergeMethods": ["squash"],
+      "codeqlLanguages": ["actions", "javascript-typescript"]
+    }
+  }
+}

@@ -1,0 +1,67 @@
+{
+  "name": "@schalkneethling/shorty-pants",
+  "version": "0.0.0",
+  "description": "A local-first tool that turns a moment of discovery while coding into a finished YouTube Short.",
+  "keywords": [
+    "captions",
+    "ffmpeg",
+    "video",
+    "whisper",
+    "youtube-shorts"
+  ],
+  "homepage": "https://github.com/schalkneethling/shorty-pants#readme",
+  "bugs": {
+    "url": "https://github.com/schalkneethling/shorty-pants/issues"
+  },
+  "license": "MIT",
+  "author": "Schalk Neethling",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/schalkneethling/shorty-pants.git"
+  },
+  "files": [
+    "dist"
+  ],
+  "type": "module",
+  "exports": {
+    ".": "./dist/index.mjs",
+    "./package.json": "./package.json"
+  },
+  "publishConfig": {
+    "access": "public"
+  },
+  "scripts": {
+    "build": "vp pack",
+    "dev": "vp pack --watch",
+    "test": "vp test",
+    "check": "vp check",
+    "prepublishOnly": "vp run build",
+    "lint:styles": "stylelint \"**/*.{css,scss}\" --allow-empty-input",
+    "lint:styles:fix": "stylelint \"**/*.{css,scss}\" --allow-empty-input --fix",
+    "knip": "knip",
+    "lint:html": "html-validate \"**/*.html\"",
+    "repo:controls:check": "node scripts/repository-controls.mjs",
+    "repo:controls:apply": "node scripts/repository-controls.mjs --apply",
+    "quality": "vp check && vp test --passWithNoTests && pnpm lint:styles && pnpm knip"
+  },
+  "devDependencies": {
+    "@types/node": "^26.6.5",
+    "html-validate": "^11.16.2",
+    "knip": "^6.41.0",
+    "stylelint": "^17.16.0",
+    "stylelint-order": "^8.1.2",
+    "stylelint-plugin-logical-css": "^2.1.0",
+    "typescript": "^7.0.2",
+    "vite-plus": "catalog:"
+  },
+  "devEngines": {
+    "packageManager": {
+      "name": "pnpm",
+      "version": "12.14.0",
+      "onFail": "download"
+    }
+  },
+  "engines": {
+    "node": ">=24.11.0"
+  }
+}

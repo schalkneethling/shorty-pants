@@ -1,0 +1,85 @@
+{
+  "version": 1,
+  "profile": "default",
+  "integrations": [
+    "editorconfig",
+    "knip",
+    "html-validate",
+    "github-repository-controls",
+    "stylelint",
+    "stylelint-order",
+    "stylelint-logical-css"
+  ],
+  "files": [
+    ".editorconfig",
+    ".stylelintrc.json",
+    ".htmlvalidate.json",
+    ".htmlvalidateignore",
+    "knip.json",
+    ".github/repository-controls.json",
+    ".github/dependabot.yml",
+    "scripts/repository-controls.mjs",
+    "docs/repository-controls.md"
+  ],
+  "managedFiles": [
+    {
+      "path": ".editorconfig",
+      "hash": "3a15156"
+    },
+    {
+      "path": ".stylelintrc.json",
+      "hash": "d3e50f3"
+    },
+    {
+      "path": ".htmlvalidate.json",
+      "hash": "7423705"
+    },
+    {
+      "path": ".htmlvalidateignore",
+      "hash": "a07c739"
+    },
+    {
+      "path": "knip.json",
+      "hash": "0f92de4"
+    },
+    {
+      "path": ".github/repository-controls.json",
+      "hash": "f117050"
+    },
+    {
+      "path": ".github/dependabot.yml",
+      "hash": "73591e2"
+    },
+    {
+      "path": "scripts/repository-controls.mjs",
+      "hash": "9b9524f"
+    },
+    {
+      "path": "docs/repository-controls.md",
+      "hash": "7dcc659"
+    }
+  ],
+  "aiArtifacts": [
+    {
+      "type": "skill",
+      "name": "npm-publishing-best-practices",
+      "source": "skill-npm-publishing-best-practices",
+      "path": ".agents/skills/npm-publishing-best-practices",
+      "hash": "03f225a"
+    },
+    {
+      "type": "skill",
+      "name": "npm-trusted-publishing-github-workflow",
+      "source": "skill-npm-trusted-publishing-github-workflow",
+      "path": ".agents/skills/npm-trusted-publishing-github-workflow",
+      "hash": "641b800"
+    },
+    {
+      "type": "skill",
+      "name": "calavera",
+      "source": "skills/calavera",
+      "path": ".agents/skills/calavera",
+      "hash": "6ab77b1"
+    }
+  ]
+}
