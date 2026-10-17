@@ -2,7 +2,7 @@
 
 A local-first tool that turns a moment of discovery while coding into a finished YouTube Short. It records your camera and one shared window, transcribes locally, lets you cut by editing the transcript, and renders a 1080 × 1920 video with word-timed captions.
 
-This project is in early development. The [project brief](https://claude.ai/code/artifact/019ec77a-71b2-4cc8-88e1-afbdded5fccf) describes the plan and milestones.
+This project is in early development. Run `short --help` to see the planned commands; each one arrives with its milestone.
 
 ## Development
 

@@ -19,6 +19,9 @@
     "type": "git",
     "url": "git+https://github.com/schalkneethling/shorty-pants.git"
   },
+  "bin": {
+    "short": "./dist/bin.mjs"
+  },
   "files": [
     "dist"
   ],
@@ -38,13 +41,18 @@
     "prepublishOnly": "vp run build",
     "lint:styles": "stylelint \"**/*.{css,scss}\" --allow-empty-input",
     "lint:styles:fix": "stylelint \"**/*.{css,scss}\" --allow-empty-input --fix",
-    "knip": "knip",
+    "knip": "knip --tsConfig tsconfig.build.json",
     "lint:html": "html-validate \"**/*.html\"",
     "repo:controls:check": "node scripts/repository-controls.mjs",
     "repo:controls:apply": "node scripts/repository-controls.mjs --apply",
-    "quality": "vp check && vp test --passWithNoTests && pnpm lint:styles && pnpm knip"
+    "quality": "vp check && vp test --passWithNoTests && pnpm lint:styles && pnpm knip",
+    "test:e2e": "playwright test --pass-with-no-tests"
+  },
+  "dependencies": {
+    "zod": "^4.6.7"
   },
   "devDependencies": {
+    "@playwright/test": "^1.64.1",
     "@types/node": "^26.6.5",
     "html-validate": "^11.16.2",
     "knip": "^6.41.0",
