@@ -23,13 +23,20 @@ export default defineConfig({
     },
     // The browser pages that the local server serves, such as the recorder.
     {
-      entry: { "recorder/recorder": "web/recorder/recorder.ts" },
+      entry: {
+        "recorder/recorder": "web/recorder/recorder.ts",
+        "editor/editor": "web/editor/editor.ts",
+      },
       platform: "browser",
       outDir: "dist-web",
       dts: false,
       copy: [
         { from: "web/recorder/index.html", to: "dist-web/recorder" },
         { from: "web/recorder/recorder.css", to: "dist-web/recorder" },
+        { from: "web/editor/index.html", to: "dist-web/editor" },
+        { from: "web/editor/editor.css", to: "dist-web/editor" },
+        { from: "web/shared/base.css", to: "dist-web/shared" },
+        { from: "web/shared/layouts.css", to: "dist-web/shared" },
       ],
     },
   ],

@@ -1,0 +1,33 @@
+/*
+ * The layouts of the 1080 × 1920 Shorts frame. The editor preview uses them
+ * now, and the render will use the same rules, so the preview shows what
+ * the render produces.
+ */
+
+.frame {
+  aspect-ratio: 9 / 16;
+  background-color: #000;
+  display: grid;
+  inline-size: 100%;
+  overflow: hidden;
+}
+
+.frame video {
+  block-size: 100%;
+  display: block;
+  inline-size: 100%;
+  min-block-size: 0;
+}
+
+/* Split: the shared window on top, the camera below. */
+.layout-split {
+  grid-template-rows: 55fr 45fr;
+}
+
+.layout-split .frame-screen {
+  object-fit: contain;
+}
+
+.layout-split .frame-camera {
+  object-fit: cover;
+}

@@ -34,6 +34,11 @@ describe("parseShortProject", () => {
     expect(result.success).toBe(true);
   });
 
+  test("accepts a short without a headline or screen crop, which are chosen after editing", () => {
+    const { headline: _headline, screenCrop: _screenCrop, ...project } = validProject();
+    expect(parseShortProject(project).success).toBe(true);
+  });
+
   test("accepts a negative screen offset, because the screen can start first", () => {
     const project = validProject();
     project.takes.screenOffsetMs = -120;

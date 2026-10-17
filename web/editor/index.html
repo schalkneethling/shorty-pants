@@ -1,0 +1,63 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <meta name="color-scheme" content="light dark">
+    <title>Edit the short · shorty-pants</title>
+    <!-- [html-validate-disable-next require-sri -- served from 127.0.0.1 by the editor server, not from a CDN] -->
+    <link rel="stylesheet" href="../shared/base.css">
+    <!-- [html-validate-disable-next require-sri -- served from 127.0.0.1 by the editor server, not from a CDN] -->
+    <link rel="stylesheet" href="../shared/layouts.css">
+    <!-- [html-validate-disable-next require-sri -- served from 127.0.0.1 by the editor server, not from a CDN] -->
+    <link rel="stylesheet" href="./editor.css">
+    <!-- [html-validate-disable-next require-sri -- served from 127.0.0.1 by the editor server, not from a CDN] -->
+    <script type="module" src="./editor.js"></script>
+  </head>
+  <body>
+    <main>
+      <header class="page-header">
+        <h1>Edit the short</h1>
+        <p id="length">The short is 0:00 long. Shorts can be up to 3:00.</p>
+      </header>
+
+      <div class="workspace">
+        <section class="preview" aria-labelledby="preview-heading">
+          <h2 id="preview-heading">Preview</h2>
+          <div class="frame layout-split">
+            <video id="screen-video" class="frame-screen" muted playsinline preload="auto"></video>
+            <video id="camera-video" class="frame-camera" playsinline preload="auto"></video>
+          </div>
+          <div class="transport">
+            <button type="button" id="play-button" disabled>Play</button>
+            <p>At <time id="position" datetime="PT0S">0:00</time> in the short</p>
+          </div>
+        </section>
+
+        <div class="controls">
+          <section aria-labelledby="transcript-heading">
+            <h2 id="transcript-heading">Transcript</h2>
+            <p id="transcript-help">Select words, then press Delete to cut them. Press Delete again to bring them back. The arrow keys move between words, and Shift with an arrow key extends the selection.</p>
+            <div id="words" class="words" role="group" aria-labelledby="transcript-heading" aria-describedby="transcript-help"></div>
+          </section>
+
+          <section aria-labelledby="trim-heading">
+            <h2 id="trim-heading">Trim</h2>
+            <div class="trim">
+              <label for="trim-start">Trim start</label>
+              <input type="range" id="trim-start" min="0" max="0" step="10" value="0" disabled>
+              <span id="trim-start-value" aria-hidden="true">0:00.0</span>
+              <label for="trim-end">Trim end</label>
+              <input type="range" id="trim-end" min="0" max="0" step="10" value="0" disabled>
+              <span id="trim-end-value" aria-hidden="true">0:00.0</span>
+            </div>
+          </section>
+
+          <button type="button" id="done-button" class="primary" disabled>Done</button>
+        </div>
+      </div>
+
+      <p><output id="status">Loading the short.</output></p>
+    </main>
+  </body>
+</html>

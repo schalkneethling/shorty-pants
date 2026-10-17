@@ -18,6 +18,10 @@ curl --fail --create-dirs -L -o ~/.cache/shorty-pants/models/ggml-small.en.bin \
 
 The model is `~/.cache/shorty-pants/models/ggml-small.en.bin` unless `--model` or `SHORTY_PANTS_WHISPER_MODEL` names another one. `SHORTY_PANTS_WHISPER_BIN` sets the whisper-cli binary, and `--language` or `SHORTY_PANTS_WHISPER_LANGUAGE` sets the spoken language, which is English by default.
 
+## Editing
+
+`short edit <short folder>` opens the editor in your browser. The transcript is shown as words: select words and press Delete to cut them, and press Delete again to bring them back. The trim handles set where the short starts and ends, and pauses longer than the threshold in the preset are cut on their own. The preview plays the short with every cut applied, and each change is saved to `short.json` as you go. Press Done in the editor, or Ctrl+C in the terminal, when you are finished. Pass `--no-open` to print the editor address without opening a browser.
+
 ## Development
 
 The project uses [Vite+](https://viteplus.dev/) with pnpm and requires Node 24.11 or newer.

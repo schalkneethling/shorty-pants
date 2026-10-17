@@ -58,8 +58,8 @@ describe("short CLI", () => {
 
   test("reports a command that is planned but not built yet and exits with 1", async () => {
     const { io, output } = createIo();
-    expect(await run(["edit"], io)).toBe(1);
-    expect(output.stderr).toContain('"short edit" is not available yet');
+    expect(await run(["render"], io)).toBe(1);
+    expect(output.stderr).toContain('"short render" is not available yet');
   });
 });
 
