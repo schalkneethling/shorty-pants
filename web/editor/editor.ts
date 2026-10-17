@@ -311,8 +311,7 @@ function changeLayout(layout: Layout) {
   );
   updateWords();
   showPosition(previewMs());
-  const subject = target.length === 1 ? words[target[0]!]!.text : `${target.length} words`;
-  announce(`${layoutNames[layout]} layout for ${subject}.`);
+  announce(`${layoutNames[layout]} layout for ${describeTarget(target)}.`);
   scheduleSave();
 }
 
@@ -464,13 +463,22 @@ function selectWord(index: number, extend: boolean) {
   }
 }
 
+/**
+ * Names the words an action applies to: the word itself, a count, or "the
+ * short" when the transcript has no words, as for a silent take.
+ */
+function describeTarget(target: number[]): string {
+  const { words } = currentProject().transcript;
+  const singleWord = target.length === 1 ? words[target[0]!] : undefined;
+  if (singleWord !== undefined) {
+    return singleWord.text;
+  }
+  return words.length === 0 ? "the short" : `${target.length} words`;
+}
+
 /** Describes a cut or a restore for the status, such as "Cut positioning." */
 function describeToggle(target: number[], isNowCut: boolean): string {
-  const action = isNowCut ? "Cut" : "Restored";
-  if (target.length === 1) {
-    return `${action} ${currentProject().transcript.words[target[0]!]!.text}.`;
-  }
-  return `${action} ${target.length} words.`;
+  return `${isNowCut ? "Cut" : "Restored"} ${describeTarget(target)}.`;
 }
 
 function toggleCut() {

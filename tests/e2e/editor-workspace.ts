@@ -50,7 +50,10 @@ export interface EditorWorkspace {
 }
 
 /** A short folder with the fixture recordings, a transcript and a fresh short.json, served by the editor. */
-export async function createEditorWorkspace(): Promise<EditorWorkspace> {
+export async function createEditorWorkspace(
+  options: { transcript?: typeof transcript } = {},
+): Promise<EditorWorkspace> {
+  const workspaceTranscript = options.transcript ?? transcript;
   const workspace = realpathSync(mkdtempSync(join(tmpdir(), "shorty-pants-editor-e2e-")));
   const shortFolder = join(workspace, "2026-10-17-anchor-scroll");
   mkdirSync(join(shortFolder, "takes"), { recursive: true });
@@ -62,10 +65,12 @@ export async function createEditorWorkspace(): Promise<EditorWorkspace> {
     );
   }
   writeFileSync(join(shortFolder, "takes.json"), JSON.stringify(recordedTakes));
-  writeFileSync(join(shortFolder, "transcript.json"), JSON.stringify(transcript));
+  writeFileSync(join(shortFolder, "transcript.json"), JSON.stringify(workspaceTranscript));
   writeFileSync(
     join(shortFolder, "short.json"),
-    JSON.stringify(createShortProject({ recordedTakes, transcript, preset: defaultPreset })),
+    JSON.stringify(
+      createShortProject({ recordedTakes, transcript: workspaceTranscript, preset: defaultPreset }),
+    ),
   );
   const server = await startEditorServer({
     shortFolder,
@@ -88,7 +93,13 @@ export function words(page: Page) {
   return page.getByRole("listbox", { name: "Transcript" }).getByRole("option");
 }
 
-export async function openEditor(page: Page, workspace: EditorWorkspace) {
+export async function openEditor(
+  page: Page,
+  workspace: EditorWorkspace,
+  wordCount = transcript.words.length,
+) {
   await page.goto(workspace.server.url);
-  await expect(words(page)).toHaveCount(transcript.words.length);
+  await expect(words(page)).toHaveCount(wordCount);
+  // The layout choice is enabled once the short has loaded.
+  await expect(page.getByRole("group", { name: "Layout for the selected words" })).toBeEnabled();
 }

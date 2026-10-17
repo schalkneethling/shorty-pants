@@ -68,6 +68,19 @@ test("checks no layout for a selection with several, so any layout can be applie
     .toEqual([{ fromWord: 0, layout: "split" }]);
 });
 
+test("changes the layout of a short whose transcript has no words", async ({ page }) => {
+  await workspace.remove();
+  workspace = await createEditorWorkspace({
+    transcript: { version: 1, model: "m", language: "en", durationMs: 4000, words: [] },
+  });
+  await openEditor(page, workspace, 0);
+  await layoutGroup(page).getByRole("radio", { name: "Face" }).check();
+  await expect(page.getByRole("status")).toHaveText("Face layout for the short.");
+  await expect
+    .poll(() => workspace.savedShort().segments)
+    .toEqual([{ fromWord: 0, layout: "face" }]);
+});
+
 test("shows the camera in a circle over the window in the circle layout", async ({ page }) => {
   await openEditor(page, workspace);
   await words(page).first().click();
