@@ -2,6 +2,7 @@ import { defineConfig } from "vite-plus";
 
 export default defineConfig({
   pack: {
+    entry: ["src/index.ts", "src/bin.ts"],
     deps: {
       // tsdown <0.23 compatibility: resolve external dependency subpaths.
       // Remove to preserve subpath imports as written (the new default).
@@ -11,7 +12,12 @@ export default defineConfig({
     dts: {
       generator: "tsgo",
     },
-    exports: true,
+    // The bin entry is the CLI, not a module for other packages to import.
+    exports: { exclude: ["bin"] },
+  },
+  test: {
+    // Playwright owns tests/e2e/*.spec.ts.
+    include: ["tests/**/*.test.ts"],
   },
   lint: {
     // Generated and owned by Calavera; findings belong upstream.
