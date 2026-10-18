@@ -2,7 +2,16 @@
 
 A local-first tool that turns a moment of discovery while coding into a finished YouTube Short. It records your camera and one shared window, transcribes locally, lets you cut by editing the transcript, and renders a 1080 × 1920 video with word-timed captions.
 
-This project is in early development. Run `short --help` to see the planned commands; each one arrives with its milestone.
+## Installing
+
+shorty-pants needs Node 24.11 or newer and runs on macOS first.
+
+```bash
+npm install --global @schalkneethling/shorty-pants
+short --help
+```
+
+Transcription and rendering also need the tools described below: whisper.cpp with a model, FFmpeg, and Chrome or Chromium.
 
 ## Transcription
 
@@ -43,6 +52,8 @@ pnpm quality
 ```
 
 `pnpm quality` runs formatting, linting and type checks through `vp check`, the unit tests, Stylelint, html-validate and Knip.
+
+Releases are published to npm from GitHub Actions with trusted publishing; [docs/releasing.md](docs/releasing.md) describes the steps.
 
 ## License
 

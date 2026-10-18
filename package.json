@@ -1,6 +1,6 @@
 {
   "name": "@schalkneethling/shorty-pants",
-  "version": "0.0.0",
+  "version": "0.1.0",
   "description": "A local-first tool that turns a moment of discovery while coding into a finished YouTube Short.",
   "keywords": [
     "captions",
@@ -46,6 +46,8 @@
     "lint:html": "html-validate \"web/**/*.html\"",
     "repo:controls:check": "node scripts/repository-controls.mjs",
     "repo:controls:apply": "node scripts/repository-controls.mjs --apply",
+    "package:check": "publint --strict",
+    "release:check": "node scripts/release-check.ts",
     "quality": "vp check && vp test --passWithNoTests && pnpm lint:styles && pnpm lint:html && pnpm knip",
     "test:e2e": "pnpm build && playwright test"
   },
@@ -61,6 +63,7 @@
     "@types/node": "^26.6.5",
     "html-validate": "^11.16.2",
     "knip": "^6.41.0",
+    "publint": "^0.3.25",
     "stylelint": "^17.16.0",
     "stylelint-order": "^8.1.2",
     "stylelint-plugin-logical-css": "^2.1.0",

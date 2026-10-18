@@ -1,0 +1,194 @@
+name: Publish
+
+# Releases the version in package.json. Raise the version in a pull request,
+# merge it, then run this workflow from main in the Actions tab. The publish
+# job waits in the publish environment until a reviewer approves it.
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+# One release at a time, and a release that has started is never cancelled.
+concurrency:
+  group: publish
+  cancel-in-progress: false
+
+jobs:
+  test:
+    name: Test
+    permissions:
+      contents: read
+    # The same checks as every pull request, so a release is tested the same way.
+    uses: ./.github/workflows/ci.yml
+
+  build:
+    name: Pack package
+    needs: test
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    permissions:
+      contents: read
+    outputs:
+      version: ${{ steps.release.outputs.version }}
+      tag: ${{ steps.release.outputs.tag }}
+      dist-tag: ${{ steps.release.outputs.dist-tag }}
+    steps:
+      - name: Checkout
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - name: Setup pnpm and Node.js
+        uses: pnpm/setup@a0881977cd8ea73b1ed212236c99ca10dcc80cf4 # v3.1.1
+        with:
+          runtime: node@24
+          install: false
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile --ignore-scripts
+
+      # Refuses a run outside main, a version npm already has and a tag that
+      # already exists, before anything is built.
+      - name: Check the version can be released
+        id: release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: pnpm release:check
+
+      - name: Build
+        run: pnpm build
+
+      - name: Check package metadata
+        run: pnpm package:check
+
+      - name: Create package directory
+        run: |
+          package_dir="${RUNNER_TEMP}/npm-package-${GITHUB_RUN_ID}-${GITHUB_RUN_ATTEMPT}"
+          mkdir -p "$package_dir"
+          echo "PACKAGE_DIR=$package_dir" >> "$GITHUB_ENV"
+
+      - name: Create package tarball
+        run: pnpm pack --pack-destination "$PACKAGE_DIR"
+
+      # Installs the tarball the way a user would and runs the command, so a
+      # file missing from the package fails here instead of after publishing.
+      - name: Smoke test the package
+        run: |
+          tarball="$(find "$PACKAGE_DIR" -type f -name '*.tgz' -print -quit)"
+          # The listing goes to a file first: grep -q stops reading at the first
+          # match, which would end tar with SIGPIPE under pipefail.
+          contents="${RUNNER_TEMP}/npm-package-contents.txt"
+          tar -tzf "$tarball" > "$contents"
+          for page in recorder editor render; do
+            if ! grep -qx "package/dist-web/${page}/index.html" "$contents"; then
+              echo "::error::The package is missing dist-web/${page}/index.html."
+              exit 1
+            fi
+          done
+          prefix="${RUNNER_TEMP}/npm-smoke-${GITHUB_RUN_ID}-${GITHUB_RUN_ATTEMPT}"
+          mkdir -p "$prefix"
+          cd "$prefix"
+          # Resolving the dependencies fresh, outside the lockfile, is the
+          # point: it is what a user's install does.
+          npm install --global --prefix "$prefix" --ignore-scripts "$tarball"
+          "$prefix/bin/short" --help
+
+      - name: Upload package tarball
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: npm-package
+          path: ${{ runner.temp }}/npm-package-${{ github.run_id }}-${{ github.run_attempt }}/*.tgz
+          if-no-files-found: error
+          # As long as an approval in the publish environment can wait.
+          retention-days: 30
+
+  publish:
+    name: Publish to npm
+    needs: build
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    environment: publish
+    permissions:
+      contents: read
+      id-token: write
+    steps:
+      # Calavera's repository controls set this variable on the publish
+      # environment, so a run outside that environment stops here.
+      - name: Check the publish environment
+        env:
+          RELEASE_GUARD: ${{ vars.RELEASE_GUARD }}
+        run: |
+          if [ "$RELEASE_GUARD" != "approved-release-environment-v1" ]; then
+            echo "::error::The publish environment is missing its RELEASE_GUARD variable. Apply the repository controls first."
+            exit 1
+          fi
+
+      # Node 24.8.0 and newer bundle npm 11.6.0 or newer, and trusted
+      # publishing needs npm 11.5.1. This only sets up the publish step; the
+      # package was built and tested in the jobs above.
+      - name: Setup Node.js for publish
+        uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version: "24"
+
+      - name: Ensure npm is new enough for trusted publishing
+        run: |
+          npm_version="$(npm --version)"
+          node -e '
+            const [major, minor, patch] = process.argv[1].split(".").map(Number);
+            const isNewEnough = major > 11 || (major === 11 && (minor > 5 || (minor === 5 && patch >= 1)));
+            process.exit(isNewEnough ? 0 : 1);
+          ' "$npm_version" || {
+            echo "::error::Trusted publishing needs npm 11.5.1 or newer, and this runner has npm $npm_version."
+            exit 1
+          }
+          echo "npm $npm_version supports trusted publishing."
+
+      - name: Download package tarball
+        uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
+        with:
+          name: npm-package
+          path: ${{ runner.temp }}/npm-package-${{ github.run_id }}-${{ github.run_attempt }}
+
+      # npm publishes from an empty folder, so no project .npmrc or devEngines
+      # setting is read, and it signs in through OIDC, not a token.
+      - name: Publish to npm
+        env:
+          DIST_TAG: ${{ needs.build.outputs.dist-tag }}
+        run: |
+          package_dir="${RUNNER_TEMP}/npm-package-${GITHUB_RUN_ID}-${GITHUB_RUN_ATTEMPT}"
+          tarball="$(find "$package_dir" -type f -name '*.tgz' -print -quit)"
+          if [ -z "$tarball" ]; then
+            echo "::error::No package tarball found in the downloaded artifact."
+            find "$package_dir" -maxdepth 3 -type f -print
+            exit 1
+          fi
+          tarball="$(realpath "$tarball")"
+          publish_dir="${RUNNER_TEMP}/npm-publish-${GITHUB_RUN_ID}-${GITHUB_RUN_ATTEMPT}"
+          mkdir -p "$publish_dir"
+          cd "$publish_dir"
+          npm publish "$tarball" --ignore-scripts --tag "$DIST_TAG" --registry https://registry.npmjs.org
+
+  release:
+    name: Create GitHub release
+    needs: [build, publish]
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    # Creating the tag and the release is the only step that writes to the
+    # repository.
+    permissions:
+      contents: write
+    steps:
+      - name: Create the tag and release
+        env:
+          GH_TOKEN: ${{ github.token }}
+          TAG: ${{ needs.build.outputs.tag }}
+          DIST_TAG: ${{ needs.build.outputs.dist-tag }}
+        run: |
+          prerelease=()
+          if [ "$DIST_TAG" = "next" ]; then
+            prerelease=(--prerelease)
+          fi
+          gh release create "$TAG" --repo "$GITHUB_REPOSITORY" --target "$GITHUB_SHA" \
+            --title "$TAG" --generate-notes "${prerelease[@]}"

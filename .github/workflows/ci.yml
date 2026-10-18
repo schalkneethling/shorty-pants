@@ -4,12 +4,16 @@ on:
   pull_request:
   push:
     branches: [main]
+  # The publish workflow runs these jobs before it releases.
+  workflow_call:
 
 permissions:
   contents: read
 
+# In a call from the publish workflow, github.workflow is "Publish", so a push
+# to main cannot cancel the checks of a release in progress.
 concurrency:
-  group: ci-${{ github.ref }}
+  group: ci-${{ github.workflow }}-${{ github.ref }}
   cancel-in-progress: true
 
 jobs:
@@ -37,6 +41,9 @@ jobs:
 
       - name: Build
         run: pnpm build
+
+      - name: Check package metadata
+        run: pnpm package:check
 
   e2e:
     name: Browser tests

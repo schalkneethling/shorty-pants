@@ -27,4 +27,6 @@ GitHub must support code-scanning merge protection for the repository. A require
 ## Manual controls
 
 - In **Settings → Advanced Security**, enable Dependabot malware alerts.
+- In **Settings → Environments → publish**, disable administrator bypass.
+
 The generated script verifies the repository identity before planning or applying changes. Unsupported GitHub plan features are reported separately from drift.

@@ -42,9 +42,21 @@
       "squash"
     ]
   },
-  "releaseEnvironment": null,
+  "releaseEnvironment": {
+    "name": "publish",
+    "reviewers": [
+      "schalkneethling"
+    ],
+    "waitTimer": 0,
+    "preventSelfReview": false,
+    "branches": [
+      "main"
+    ],
+    "customBranchesOnly": true,
+    "guardValue": "approved-release-environment-v1"
+  },
   "manualControls": {
     "dependabotMalwareAlerts": true,
-    "disableEnvironmentAdminBypass": false
+    "disableEnvironmentAdminBypass": true
   }
 }

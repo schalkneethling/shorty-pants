@@ -44,7 +44,7 @@
     },
     {
       "path": ".github/repository-controls.json",
-      "hash": "f117050"
+      "hash": "70da3d7"
     },
     {
       "path": ".github/dependabot.yml",
@@ -56,7 +56,7 @@
     },
     {
       "path": "docs/repository-controls.md",
-      "hash": "7dcc659"
+      "hash": "1d4426d"
     }
   ],
   "aiArtifacts": [
