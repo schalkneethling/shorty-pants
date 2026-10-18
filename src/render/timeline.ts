@@ -16,6 +16,38 @@ export interface RenderPiece {
   layout: Layout;
 }
 
+/** The number of frames in a length of the short, rounded to the nearest frame. */
+export function frameCount(durationMs: number): number {
+  return Math.round((durationMs * frame.fps) / 1000);
+}
+
+/** A piece with where it starts in the short and how many frames it gets. */
+export interface FramedPiece extends RenderPiece {
+  firstFrame: number;
+  frames: number;
+}
+
+/**
+ * Gives each piece its frames on one grid for the whole short. Rounding
+ * where each piece starts and ends in the short, rather than each piece's
+ * length, keeps the frames in step with the short's time however many
+ * pieces there are, so the captions stay on their words.
+ */
+export function framePieces(pieces: RenderPiece[]): FramedPiece[] {
+  const framed: FramedPiece[] = [];
+  let shortStartMs = 0;
+  for (const piece of pieces) {
+    const shortEndMs = shortStartMs + (piece.endMs - piece.startMs);
+    const firstFrame = frameCount(shortStartMs);
+    const frames = frameCount(shortEndMs) - firstFrame;
+    if (frames > 0) {
+      framed.push({ ...piece, firstFrame, frames });
+    }
+    shortStartMs = shortEndMs;
+  }
+  return framed;
+}
+
 /** Splits the kept ranges where the layout changes. Pieces shorter than a frame are left out. */
 export function renderPieces(input: {
   words: TranscriptWord[];
@@ -73,14 +105,44 @@ export function captionCues(chunks: CaptionChunk[], keepRanges: KeepRange[]): Ca
   return cues;
 }
 
+/** A caption state in the captions area of one layout. */
+export interface PlacedCaptionCue extends CaptionCue {
+  layout: Layout;
+}
+
+/**
+ * Gives each cue the layout in force, splitting a cue where the layout
+ * changes, so the caption moves to the new layout's area with the picture.
+ * The changes are in short time.
+ */
+export function splitCuesAtLayoutChanges(
+  cues: CaptionCue[],
+  changes: { fromMs: number; layout: Layout }[],
+): PlacedCaptionCue[] {
+  const layoutAt = (ms: number) =>
+    changes.filter((change) => change.fromMs <= ms).at(-1)?.layout ?? changes[0]!.layout;
+  return cues.flatMap((cue) => {
+    const changePoints = changes
+      .map((change) => change.fromMs)
+      .filter((ms) => ms > cue.startMs && ms < cue.endMs);
+    const edges = [cue.startMs, ...changePoints, cue.endMs];
+    return edges.slice(0, -1).map((startMs, index) => ({
+      ...cue,
+      startMs,
+      endMs: edges[index + 1]!,
+      layout: layoutAt(startMs),
+    }));
+  });
+}
+
 /** An image in the caption sequence, or null for no caption, and how long it shows. */
 export interface CaptionFrame {
-  image: { chunkIndex: number; wordIndex: number } | null;
+  image: { chunkIndex: number; wordIndex: number; layout: Layout } | null;
   durationMs: number;
 }
 
 /** The caption images from the start of the short to its end, with blanks between cues. */
-export function captionFrames(cues: CaptionCue[], durationMs: number): CaptionFrame[] {
+export function captionFrames(cues: PlacedCaptionCue[], durationMs: number): CaptionFrame[] {
   const frames: CaptionFrame[] = [];
   let cursorMs = 0;
   for (const cue of cues) {
@@ -90,7 +152,7 @@ export function captionFrames(cues: CaptionCue[], durationMs: number): CaptionFr
     }
     if (cue.endMs > startMs) {
       frames.push({
-        image: { chunkIndex: cue.chunkIndex, wordIndex: cue.wordIndex },
+        image: { chunkIndex: cue.chunkIndex, wordIndex: cue.wordIndex, layout: cue.layout },
         durationMs: cue.endMs - startMs,
       });
       cursorMs = cue.endMs;
@@ -100,4 +162,30 @@ export function captionFrames(cues: CaptionCue[], durationMs: number): CaptionFr
     frames.push({ image: null, durationMs: durationMs - cursorMs });
   }
   return frames;
+}
+
+/**
+ * The part of the caption sequence between two moments in the short, for a
+ * piece that draws its own captions. Past the end of the sequence it is blank.
+ */
+export function captionFramesBetween(
+  frames: CaptionFrame[],
+  startMs: number,
+  endMs: number,
+): CaptionFrame[] {
+  const result: CaptionFrame[] = [];
+  let frameStartMs = 0;
+  for (const captionFrame of frames) {
+    const frameEndMs = frameStartMs + captionFrame.durationMs;
+    const overlapMs = Math.min(frameEndMs, endMs) - Math.max(frameStartMs, startMs);
+    if (overlapMs > 0) {
+      result.push({ image: captionFrame.image, durationMs: overlapMs });
+    }
+    frameStartMs = frameEndMs;
+  }
+  const blankAfterMs = endMs - Math.max(frameStartMs, startMs);
+  if (blankAfterMs > 0) {
+    result.push({ image: null, durationMs: blankAfterMs });
+  }
+  return result;
 }

@@ -1,5 +1,11 @@
 import { describe, expect, test } from "vite-plus/test";
-import { toFfconcat, toWebVtt, uploadText, vttTimestamp } from "../../src/render/text-outputs.ts";
+import {
+  imageConcatList,
+  videoConcatList,
+  toWebVtt,
+  uploadText,
+  vttTimestamp,
+} from "../../src/render/text-outputs.ts";
 
 describe("vttTimestamp", () => {
   test("writes hours, minutes, seconds and milliseconds", () => {
@@ -60,10 +66,10 @@ describe("uploadText", () => {
   });
 });
 
-describe("toFfconcat", () => {
+describe("imageConcatList", () => {
   test("lists each image with its duration in seconds, and repeats the last one", () => {
     expect(
-      toFfconcat([
+      imageConcatList([
         { file: "blank.png", durationMs: 100 },
         { file: "caption-1-1.png", durationMs: 1250 },
       ]),
@@ -71,11 +77,38 @@ describe("toFfconcat", () => {
       [
         "ffconcat version 1.0",
         "file 'blank.png'",
-        "duration 0.100",
+        "duration 0.100000",
         "file 'caption-1-1.png'",
-        "duration 1.250",
+        "duration 1.250000",
         // The concat demuxer ignores the last duration without this.
         "file 'caption-1-1.png'",
+        "",
+      ].join("\n"),
+    );
+  });
+
+  test("quotes a file name with an apostrophe so the demuxer reads it whole", () => {
+    expect(imageConcatList([{ file: "it's.png", durationMs: 100 }])).toContain(
+      "file 'it'\\''s.png'",
+    );
+  });
+});
+
+describe("videoConcatList", () => {
+  test("gives each video its exact length, to the microsecond, and plays the last one once", () => {
+    // 28 frames at 30 per second.
+    expect(
+      videoConcatList([
+        { file: "piece-0.nut", durationMs: (28 * 1000) / 30 },
+        { file: "piece-1.nut", durationMs: 1000 },
+      ]),
+    ).toBe(
+      [
+        "ffconcat version 1.0",
+        "file 'piece-0.nut'",
+        "duration 0.933333",
+        "file 'piece-1.nut'",
+        "duration 1.000000",
         "",
       ].join("\n"),
     );

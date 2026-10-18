@@ -3,7 +3,9 @@ import { mkdirSync, readFileSync, rmSync } from "node:fs";
 import { join } from "node:path";
 import { expect, test, type Page } from "@playwright/test";
 import { runCommand } from "../../src/commands.ts";
+import { computeKeepRanges } from "../../src/edit/cut-list.ts";
 import { layoutGeometry } from "../../src/edit/layout-geometry.ts";
+import { keptDurationMs } from "../../src/edit/playback.ts";
 import { renderOverlays } from "../../src/render/overlays.ts";
 import { renderShort } from "../../src/render/render.ts";
 import { defaultPreset } from "../../src/schemas/preset.ts";
@@ -11,6 +13,7 @@ import {
   createEditorWorkspace,
   createShortFolder,
   openEditor,
+  transcript,
   webRoot,
   words,
 } from "./editor-workspace.ts";
@@ -32,6 +35,8 @@ const dressedShort = {
 interface ProbedStream {
   codec_type: string;
   codec_name: string;
+  duration?: string;
+  nb_frames?: string;
   width?: number;
   height?: number;
   r_frame_rate?: string;
@@ -42,7 +47,15 @@ function probe(path: string): { streams: ProbedStream[]; format: { duration: str
   return JSON.parse(
     execFileSync(
       "ffprobe",
-      ["-v", "error", "-show_entries", "stream:format=duration", "-of", "json", path],
+      [
+        "-v",
+        "error",
+        "-show_entries",
+        "stream=codec_type,codec_name,width,height,r_frame_rate,pix_fmt,duration,nb_frames:format=duration",
+        "-of",
+        "json",
+        path,
+      ],
       { encoding: "utf8" },
     ),
   );
@@ -77,6 +90,57 @@ test("renders a 1080 × 1920 short at 30 frames per second in H.264 and AAC", as
   // Kept: 200–1900 ms and 2500–3500 ms.
   expect(result.durationMs).toBe(2700);
   expect(Number(format.duration)).toBeCloseTo(2.7, 1);
+  expect(Number(audio.duration)).toBeCloseTo(2.7, 1);
+});
+
+test("keeps the frames, the sound and the short's time together across many cuts", async () => {
+  test.setTimeout(120_000);
+  // Twenty short words, every other one cut, with the layout changing four
+  // times: about ten pieces, each a fraction of a second.
+  const manyWords = Array.from({ length: 20 }, (_, index) => ({
+    text: `word${index}`,
+    startMs: 200 + index * 180,
+    endMs: 300 + index * 180,
+  }));
+  rmSync(workspace, { recursive: true, force: true });
+  ({ workspace, shortFolder } = createShortFolder({
+    transcript: { ...transcript, words: manyWords },
+    short: {
+      headline: dressedShort.headline,
+      trim: { startMs: 100, endMs: 3900 },
+      removedWords: manyWords.flatMap((_, index) => (index % 2 === 1 ? [[index, index]] : [])),
+      segments: [
+        { fromWord: 0, layout: "split" },
+        { fromWord: 4, layout: "circle" },
+        { fromWord: 8, layout: "face" },
+        { fromWord: 12, layout: "split" },
+        { fromWord: 16, layout: "circle" },
+      ],
+    },
+  }));
+  const short = JSON.parse(readFileSync(join(shortFolder, "short.json"), "utf8"));
+  const keepRanges = computeKeepRanges({ words: manyWords, ...short });
+  expect(keepRanges.length).toBeGreaterThanOrEqual(8);
+
+  const result = await renderShort({ shortFolder, webRoot, run: runCommand, executablePath });
+
+  // Rounding each piece to whole frames would add up; the grid keeps the
+  // short within half a frame of the kept time.
+  expect(Math.abs(result.durationMs - keptDurationMs(keepRanges))).toBeLessThanOrEqual(1000 / 60);
+  const { streams } = probe(result.videoPath);
+  const video = streams.find((stream) => stream.codec_type === "video")!;
+  const audio = streams.find((stream) => stream.codec_type === "audio")!;
+  expect(Number(video.nb_frames)).toBe((result.durationMs * 30) / 1000);
+  // The sound lasts as long as the picture, to within a frame.
+  expect(Math.abs(Number(audio.duration) - Number(video.duration))).toBeLessThan(1 / 30);
+
+  // Reading the whole file reports no timestamps that run backwards.
+  const decodeLog = execFileSync(
+    "ffmpeg",
+    ["-v", "warning", "-i", result.videoPath, "-f", "null", "-"],
+    { encoding: "utf8", stdio: ["ignore", "pipe", "pipe"] },
+  );
+  expect(decodeLog).not.toMatch(/non-monotonic|backward/i);
 });
 
 test("writes the captions as WebVTT and a title and description to upload with", async () => {
@@ -129,6 +193,23 @@ test("draws the headline and a caption the same way every time", async () => {
   expect(readFileSync(files.circleMask)).toMatchSnapshot("circle-mask.png", {
     maxDiffPixelRatio: 0.01,
   });
+});
+
+test("explains a browser that cannot start, and leaves nothing running", async () => {
+  const outputDir = join(workspace, "overlays");
+  mkdirSync(outputDir);
+  const geometry = layoutGeometry("split", defaultPreset.safeZones);
+  await expect(
+    renderOverlays({
+      webRoot,
+      outputDir,
+      preset: defaultPreset,
+      headline: { ...dressedShort.headline, area: geometry.headline },
+      captions: [],
+      circleMaskSize: { width: 360, height: 360 },
+      executablePath: join(workspace, "no-such-browser"),
+    }),
+  ).rejects.toThrow("could not be started. Check SHORTY_PANTS_CHROMIUM.");
 });
 
 /** The mean difference of two images, from 0 for the same to 255 for opposite, at the first one's size. */

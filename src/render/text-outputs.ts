@@ -33,19 +33,33 @@ export function uploadText(input: { headline: string; spokenText: string }): str
   );
 }
 
+/** A file name quoted for FFmpeg's concat demuxer, where ' is written as '\''. */
+function quoteForConcat(file: string): string {
+  return `'${file.replaceAll("'", "'\\''")}'`;
+}
+
+function concatEntry(entry: { file: string; durationMs: number }): string[] {
+  return [`file ${quoteForConcat(entry.file)}`, `duration ${(entry.durationMs / 1000).toFixed(6)}`];
+}
+
 /**
  * A list for FFmpeg's concat demuxer that shows each image for its duration.
- * The demuxer ignores the last duration unless the last file is listed again.
+ * The demuxer ignores the last duration unless the last image is listed again.
  */
-export function toFfconcat(entries: { file: string; durationMs: number }[]): string {
-  const lines = ["ffconcat version 1.0"];
-  for (const entry of entries) {
-    lines.push(`file '${entry.file}'`, `duration ${(entry.durationMs / 1000).toFixed(3)}`);
+export function imageConcatList(images: { file: string; durationMs: number }[]): string {
+  const lines = ["ffconcat version 1.0", ...images.flatMap(concatEntry)];
+  const lastImage = images.at(-1);
+  if (lastImage !== undefined) {
+    lines.push(`file ${quoteForConcat(lastImage.file)}`);
   }
-  const lastEntry = entries.at(-1);
-  if (lastEntry !== undefined) {
-    lines.push(`file '${lastEntry.file}'`);
-  }
-  lines.push("");
-  return lines.join("\n");
+  return [...lines, ""].join("\n");
+}
+
+/**
+ * A list for FFmpeg's concat demuxer that plays videos one after another.
+ * Each video's length is given, rather than read from its file, because
+ * containers round lengths and the rounding would add up across the pieces.
+ */
+export function videoConcatList(videos: { file: string; durationMs: number }[]): string {
+  return ["ffconcat version 1.0", ...videos.flatMap(concatEntry), ""].join("\n");
 }

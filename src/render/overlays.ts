@@ -54,7 +54,14 @@ export interface OverlayFiles {
 
 async function launchBrowser(executablePath: string | undefined): Promise<Browser> {
   if (executablePath !== undefined) {
-    return chromium.launch({ executablePath });
+    try {
+      return await chromium.launch({ executablePath });
+    } catch (error) {
+      const reason = error instanceof Error ? error.message.split("\n")[0] : String(error);
+      throw new ShortError(
+        `The browser at ${executablePath} could not be started. Check SHORTY_PANTS_CHROMIUM. ${reason}`,
+      );
+    }
   }
   try {
     return await chromium.launch();
@@ -76,14 +83,17 @@ async function launchBrowser(executablePath: string | undefined): Promise<Browse
  * The headline and captions are transparent images the size of the frame.
  */
 export async function renderOverlays(request: OverlayRequest): Promise<OverlayFiles> {
-  const server = await startLocalServer({
-    webRoot: request.webRoot,
-    page: "render",
-    token: randomBytes(24).toString("base64url"),
-    handleApi: () => Promise.reject(new HttpError(404, "Not found.")),
-  });
+  // The browser starts first: if it cannot, no server is left running to
+  // keep the command from exiting.
   const browser = await launchBrowser(request.executablePath);
+  let server: Awaited<ReturnType<typeof startLocalServer>> | undefined;
   try {
+    server = await startLocalServer({
+      webRoot: request.webRoot,
+      page: "render",
+      token: randomBytes(24).toString("base64url"),
+      handleApi: () => Promise.reject(new HttpError(404, "Not found.")),
+    });
     const page = await browser.newPage({
       viewport: { width: frame.width, height: frame.height },
       deviceScaleFactor: 1,
@@ -138,6 +148,6 @@ export async function renderOverlays(request: OverlayRequest): Promise<OverlayFi
     return files;
   } finally {
     await browser.close();
-    await server.close();
+    await server?.close();
   }
 }

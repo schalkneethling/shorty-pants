@@ -1,23 +1,31 @@
 import { existsSync } from "node:fs";
 import { mkdir, rename, rm, writeFile } from "node:fs/promises";
-import { dirname, join } from "node:path";
+import { basename, dirname, join } from "node:path";
 import { chunkCaptions, keptWords } from "../edit/captions.ts";
 import { computeKeepRanges } from "../edit/cut-list.ts";
 import { layoutGeometry, type Size } from "../edit/layout-geometry.ts";
-import { keptDurationMs, shortTimeMs } from "../edit/playback.ts";
+import { shortTimeMs } from "../edit/playback.ts";
 import { makeSeekableCopies } from "../edit/seekable-copies.ts";
-import { layoutAtTime } from "../edit/segments.ts";
+import { layoutChanges } from "../edit/segments.ts";
 import { CommandNotFoundError, type CommandRunner } from "../commands.ts";
 import { ShortError } from "../errors.ts";
 import { readValidatedJson } from "../json-file.ts";
 import { readPreset } from "../preset-file.ts";
+import { frame } from "../schemas/frame.ts";
 import { parseRecordedTakes } from "../schemas/recorded-takes.ts";
 import { parseShortProject } from "../schemas/short-project.ts";
 import { parseTranscript } from "../schemas/transcript.ts";
-import { buildRenderCommand } from "./ffmpeg-command.ts";
+import { buildFinalCommand, buildPieceCommand } from "./ffmpeg-command.ts";
 import { renderOverlays, type CaptionImage } from "./overlays.ts";
-import { captionCues, captionFrames, renderPieces } from "./timeline.ts";
-import { toFfconcat, toWebVtt, uploadText } from "./text-outputs.ts";
+import {
+  captionCues,
+  captionFrames,
+  captionFramesBetween,
+  framePieces,
+  renderPieces,
+  splitCuesAtLayoutChanges,
+} from "./timeline.ts";
+import { imageConcatList, toWebVtt, uploadText, videoConcatList } from "./text-outputs.ts";
 
 // YouTube treats vertical videos of up to three minutes as Shorts.
 const shortsLimitMs = 180_000;
@@ -110,8 +118,13 @@ export async function renderShort(options: RenderOptions): Promise<RenderResult>
   const preset = await readPreset(dirname(shortFolder));
 
   const keepRanges = computeKeepRanges({ words: transcript.words, ...short });
-  const durationMs = keptDurationMs(keepRanges);
-  if (durationMs === 0) {
+  const pieces = framePieces(
+    renderPieces({ words: transcript.words, keepRanges, segments: short.segments }),
+  );
+  // The short's length on the frame grid, which every output follows.
+  const frames = pieces.reduce((total, piece) => total + piece.frames, 0);
+  const durationMs = (frames * 1000) / frame.fps;
+  if (frames === 0) {
     throw new ShortError("The edits cut everything. Bring back some words in short edit.");
   }
   if (durationMs > shortsLimitMs) {
@@ -121,7 +134,7 @@ export async function renderShort(options: RenderOptions): Promise<RenderResult>
   }
 
   // The seekable copies let FFmpeg jump to each piece instead of decoding
-  // the recordings from the start for every piece.
+  // the recordings from the start.
   const { cam: cameraPath, screen: screenPath } = await makeSeekableCopies(
     shortFolder,
     {
@@ -137,73 +150,101 @@ export async function renderShort(options: RenderOptions): Promise<RenderResult>
 
   const words = keptWords(transcript.words, keepRanges);
   const chunks = chunkCaptions(words, preset.captions, keepRanges);
-  const cues = captionCues(chunks, keepRanges);
-  const outputDir = join(shortFolder, "out");
-  const overlaysDir = join(outputDir, "overlays");
-  await rm(overlaysDir, { recursive: true, force: true });
-  await mkdir(overlaysDir, { recursive: true });
-
-  // Each caption state is placed in the captions area of the layout of the
-  // word being said, as in the preview, so a chunk that crosses a layout
-  // change moves with the layout.
-  const captionImages: CaptionImage[] = cues.map((cue) => {
-    const chunk = chunks[cue.chunkIndex]!;
-    const spokenWord = chunk.words[cue.wordIndex]!;
-    const layout = layoutAtTime(transcript.words, short.segments, spokenWord.startMs);
-    return {
-      file: join(overlaysDir, `caption-${cue.chunkIndex}-${cue.wordIndex}.png`),
-      words: chunk.words.map((word) => word.text),
-      wordIndex: cue.wordIndex,
-      area: layoutGeometry(layout, preset.safeZones).captions,
-    };
-  });
-  const circleCamera = layoutGeometry("circle", preset.safeZones).camera;
-  const overlays = await renderOverlays({
-    webRoot: options.webRoot,
-    outputDir: overlaysDir,
-    preset,
-    headline: { ...headline, area: layoutGeometry("split", preset.safeZones).headline },
-    captions: captionImages,
-    circleMaskSize: { width: circleCamera.width, height: circleCamera.height },
-    executablePath: options.executablePath,
-  });
-
-  const captionsListPath = join(overlaysDir, "captions.ffconcat");
-  const captionEntries = captionFrames(cues, durationMs).map((captionFrame) => ({
-    file:
-      captionFrame.image === null
-        ? overlays.blank
-        : join(
-            overlaysDir,
-            `caption-${captionFrame.image.chunkIndex}-${captionFrame.image.wordIndex}.png`,
-          ),
-    durationMs: captionFrame.durationMs,
+  // Captions move to the new layout's area at the moment the picture changes.
+  const layoutChangesInShort = layoutChanges(transcript.words, short.segments).map((change) => ({
+    fromMs: shortTimeMs(keepRanges, change.fromMs),
+    layout: change.layout,
   }));
-  await writeFile(captionsListPath, toFfconcat(captionEntries));
+  const cues = splitCuesAtLayoutChanges(captionCues(chunks, keepRanges), layoutChangesInShort);
 
+  const outputDir = join(shortFolder, "out");
+  // Everything the render makes on the way, removed when it ends.
+  const workDir = join(outputDir, "render");
+  await rm(workDir, { recursive: true, force: true });
+  await mkdir(workDir, { recursive: true });
+  const videoPath = join(outputDir, "short.mp4");
   // FFmpeg writes to a separate file that is renamed once it is complete, so
   // an interrupted render never leaves a short.mp4 that looks finished.
-  const videoPath = join(outputDir, "short.mp4");
   const partialVideoPath = join(outputDir, "short.partial.mp4");
-  const { args } = buildRenderCommand({
-    cameraPath,
-    screenPath,
-    cameraSize,
-    screenSize,
-    screenOffsetMs: recordedTakes.takes.screenOffsetMs,
-    screenCrop: short.screenCrop,
-    safeZones: preset.safeZones,
-    pieces: renderPieces({ words: transcript.words, keepRanges, segments: short.segments }),
-    headlineImagePath: overlays.headline,
-    captionsListPath,
-    circleMaskPath: overlays.circleMask,
-    outputPath: partialVideoPath,
-  });
+
   try {
+    /** The image file for a caption state; the lists refer to it by name. */
+    const captionFile = (cue: { chunkIndex: number; wordIndex: number; layout: string }) =>
+      `caption-${cue.chunkIndex}-${cue.wordIndex}-${cue.layout}.png`;
+    const uniqueCues = [...new Map(cues.map((cue) => [captionFile(cue), cue])).values()];
+    const captionImages: CaptionImage[] = uniqueCues.map((cue) => {
+      const chunk = chunks[cue.chunkIndex]!;
+      return {
+        file: join(workDir, captionFile(cue)),
+        words: chunk.words.map((word) => word.text),
+        wordIndex: cue.wordIndex,
+        area: layoutGeometry(cue.layout, preset.safeZones).captions,
+      };
+    });
+    const circleCamera = layoutGeometry("circle", preset.safeZones).camera;
+    const overlays = await renderOverlays({
+      webRoot: options.webRoot,
+      outputDir: workDir,
+      preset,
+      headline: { ...headline, area: layoutGeometry("split", preset.safeZones).headline },
+      captions: captionImages,
+      circleMaskSize: { width: circleCamera.width, height: circleCamera.height },
+      executablePath: options.executablePath,
+    });
+
+    const sources = {
+      cameraPath,
+      screenPath,
+      cameraSize,
+      screenSize,
+      screenOffsetMs: recordedTakes.takes.screenOffsetMs,
+      screenCrop: short.screenCrop,
+      safeZones: preset.safeZones,
+      circleMaskPath: overlays.circleMask,
+    };
+    const allCaptionFrames = captionFrames(cues, durationMs);
+    const frameMs = 1000 / frame.fps;
+    const pieceFiles: { file: string; durationMs: number }[] = [];
+    for (const [index, piece] of pieces.entries()) {
+      const name = `piece-${String(index).padStart(4, "0")}`;
+      // Each piece draws the captions of its own stretch of the short. The
+      // lists name images next to them, which the concat demuxer finds
+      // without full paths.
+      const captionsListPath = join(workDir, `${name}.ffconcat`);
+      const pieceStartMs = piece.firstFrame * frameMs;
+      const pieceEndMs = (piece.firstFrame + piece.frames) * frameMs;
+      await writeFile(
+        captionsListPath,
+        imageConcatList(
+          captionFramesBetween(allCaptionFrames, pieceStartMs, pieceEndMs).map((captionFrame) => ({
+            file:
+              captionFrame.image === null
+                ? basename(overlays.blank)
+                : captionFile(captionFrame.image),
+            durationMs: captionFrame.durationMs,
+          })),
+        ),
+      );
+      // NUT keeps exact timestamps, where Matroska rounds them to milliseconds.
+      const file = `${name}.nut`;
+      const { args } = buildPieceCommand(
+        piece,
+        sources,
+        { headlineImagePath: overlays.headline, captionsListPath },
+        join(workDir, file),
+      );
+      await runTool(run, "ffmpeg", args);
+      pieceFiles.push({ file, durationMs: piece.frames * frameMs });
+    }
+    const piecesListPath = join(workDir, "pieces.ffconcat");
+    await writeFile(piecesListPath, videoConcatList(pieceFiles));
+
+    const { args } = buildFinalCommand({ piecesListPath, frames, outputPath: partialVideoPath });
     await runTool(run, "ffmpeg", args);
     await rename(partialVideoPath, videoPath);
   } finally {
     await rm(partialVideoPath, { force: true });
+    await rm(workDir, { recursive: true, force: true });
   }
 
   const captionsPath = join(outputDir, "captions.vtt");
@@ -225,7 +266,6 @@ export async function renderShort(options: RenderOptions): Promise<RenderResult>
       spokenText: words.map((word) => word.text).join(" "),
     }),
   );
-  await rm(overlaysDir, { recursive: true, force: true });
 
   return { durationMs, videoPath, captionsPath, uploadPath };
 }

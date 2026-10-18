@@ -1,5 +1,13 @@
 import { describe, expect, test } from "vite-plus/test";
-import { captionCues, captionFrames, renderPieces } from "../../src/render/timeline.ts";
+import {
+  captionCues,
+  captionFrames,
+  captionFramesBetween,
+  frameCount,
+  framePieces,
+  renderPieces,
+  splitCuesAtLayoutChanges,
+} from "../../src/render/timeline.ts";
 import { chunkCaptions } from "../../src/edit/captions.ts";
 
 const words = [
@@ -94,21 +102,113 @@ describe("captionCues", () => {
 describe("captionFrames", () => {
   test("fills the gaps between cues with a blank frame, from the start to the end of the short", () => {
     const cues = [
-      { chunkIndex: 0, wordIndex: 0, startMs: 100, endMs: 500 },
-      { chunkIndex: 0, wordIndex: 1, startMs: 500, endMs: 900 },
-      { chunkIndex: 1, wordIndex: 0, startMs: 1200, endMs: 1500 },
+      { chunkIndex: 0, wordIndex: 0, startMs: 100, endMs: 500, layout: "split" as const },
+      { chunkIndex: 0, wordIndex: 1, startMs: 500, endMs: 900, layout: "split" as const },
+      { chunkIndex: 1, wordIndex: 0, startMs: 1200, endMs: 1500, layout: "face" as const },
     ];
     expect(captionFrames(cues, 2000)).toEqual([
       { image: null, durationMs: 100 },
-      { image: { chunkIndex: 0, wordIndex: 0 }, durationMs: 400 },
-      { image: { chunkIndex: 0, wordIndex: 1 }, durationMs: 400 },
+      { image: { chunkIndex: 0, wordIndex: 0, layout: "split" }, durationMs: 400 },
+      { image: { chunkIndex: 0, wordIndex: 1, layout: "split" }, durationMs: 400 },
       { image: null, durationMs: 300 },
-      { image: { chunkIndex: 1, wordIndex: 0 }, durationMs: 300 },
+      { image: { chunkIndex: 1, wordIndex: 0, layout: "face" }, durationMs: 300 },
       { image: null, durationMs: 500 },
     ]);
   });
 
   test("is one blank frame for a short without captions", () => {
     expect(captionFrames([], 1500)).toEqual([{ image: null, durationMs: 1500 }]);
+  });
+});
+
+describe("framePieces", () => {
+  test("puts every piece on one 30 fps grid, so the frames add up to the short's length", () => {
+    // Three pieces of 917 ms: 2751 ms in all, which is 82.53 frames.
+    const pieces = [0, 1, 2].map((index) => ({
+      startMs: index * 2000,
+      endMs: index * 2000 + 917,
+      layout: "split" as const,
+    }));
+    const framed = framePieces(pieces);
+    expect(framed.map((piece) => piece.frames)).toEqual([28, 27, 28]);
+    expect(framed.reduce((total, piece) => total + piece.frames, 0)).toBe(frameCount(2751));
+  });
+
+  test("leaves out a piece that gets no frame on the grid, without moving the ones after it", () => {
+    const framed = framePieces([
+      { startMs: 0, endMs: 1000, layout: "split" },
+      { startMs: 5000, endMs: 5010, layout: "face" },
+      { startMs: 8000, endMs: 9000, layout: "circle" },
+    ]);
+    expect(framed.map((piece) => [piece.layout, piece.frames])).toEqual([
+      ["split", 30],
+      ["circle", 30],
+    ]);
+  });
+});
+
+describe("frameCount", () => {
+  test("is the number of frames at 30 per second, rounded to the nearest", () => {
+    expect(frameCount(1000)).toBe(30);
+    expect(frameCount(2751)).toBe(83);
+    expect(frameCount(16)).toBe(0);
+  });
+});
+
+describe("splitCuesAtLayoutChanges", () => {
+  test("splits a cue where the layout changes, so the caption moves with the picture", () => {
+    const cues = [{ chunkIndex: 0, wordIndex: 1, startMs: 1000, endMs: 2000 }];
+    const changes = [
+      { fromMs: 0, layout: "split" as const },
+      { fromMs: 1400, layout: "face" as const },
+    ];
+    expect(splitCuesAtLayoutChanges(cues, changes)).toEqual([
+      { chunkIndex: 0, wordIndex: 1, startMs: 1000, endMs: 1400, layout: "split" },
+      { chunkIndex: 0, wordIndex: 1, startMs: 1400, endMs: 2000, layout: "face" },
+    ]);
+  });
+
+  test("gives a cue without a change inside it the layout in force", () => {
+    const cues = [{ chunkIndex: 2, wordIndex: 0, startMs: 3000, endMs: 3500 }];
+    const changes = [
+      { fromMs: 0, layout: "split" as const },
+      { fromMs: 1400, layout: "circle" as const },
+    ];
+    expect(splitCuesAtLayoutChanges(cues, changes)).toEqual([
+      { chunkIndex: 2, wordIndex: 0, startMs: 3000, endMs: 3500, layout: "circle" },
+    ]);
+  });
+});
+
+describe("framePieces, where each piece falls in the short", () => {
+  test("gives each piece its first frame in the short", () => {
+    const framed = framePieces([
+      { startMs: 0, endMs: 917, layout: "split" },
+      { startMs: 2000, endMs: 2917, layout: "face" },
+    ]);
+    expect(framed.map((piece) => piece.firstFrame)).toEqual([0, 28]);
+  });
+});
+
+describe("captionFramesBetween", () => {
+  const frames = [
+    { image: null, durationMs: 100 },
+    { image: { chunkIndex: 0, wordIndex: 0, layout: "split" as const }, durationMs: 400 },
+    { image: { chunkIndex: 0, wordIndex: 1, layout: "split" as const }, durationMs: 400 },
+    { image: null, durationMs: 1100 },
+  ];
+
+  test("keeps the part of the caption sequence inside a stretch of the short", () => {
+    expect(captionFramesBetween(frames, 300, 700)).toEqual([
+      { image: { chunkIndex: 0, wordIndex: 0, layout: "split" }, durationMs: 200 },
+      { image: { chunkIndex: 0, wordIndex: 1, layout: "split" }, durationMs: 200 },
+    ]);
+  });
+
+  test("covers the whole stretch, with a blank past the end of the sequence", () => {
+    expect(captionFramesBetween(frames, 1900, 2200)).toEqual([
+      { image: null, durationMs: 100 },
+      { image: null, durationMs: 200 },
+    ]);
   });
 });

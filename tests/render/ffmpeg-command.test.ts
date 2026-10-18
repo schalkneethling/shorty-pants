@@ -1,28 +1,21 @@
 import { describe, expect, test } from "vite-plus/test";
 import {
-  buildRenderCommand,
+  buildFinalCommand,
+  buildPieceCommand,
   scaleAndCrop,
-  type RenderInputs,
+  type PieceSources,
 } from "../../src/render/ffmpeg-command.ts";
 import { defaultPreset } from "../../src/schemas/preset.ts";
 
-const inputs: RenderInputs = {
-  cameraPath: "/short/takes/cam.webm",
-  screenPath: "/short/takes/screen.webm",
+const sources: PieceSources = {
+  cameraPath: "/short/takes/cam.preview.webm",
+  screenPath: "/short/takes/screen.preview.webm",
   cameraSize: { width: 1280, height: 720 },
   screenSize: { width: 1920, height: 1080 },
   screenOffsetMs: 40,
   screenCrop: undefined,
   safeZones: defaultPreset.safeZones,
-  pieces: [
-    { startMs: 200, endMs: 1300, layout: "split" },
-    { startMs: 1300, endMs: 1900, layout: "face" },
-    { startMs: 2500, endMs: 3500, layout: "circle" },
-  ],
-  headlineImagePath: "/short/out/overlays/headline.png",
-  captionsListPath: "/short/out/overlays/captions.ffconcat",
-  circleMaskPath: "/short/out/overlays/circle-mask.png",
-  outputPath: "/short/out/short.mp4",
+  circleMaskPath: "/short/out/render/circle-mask.png",
 };
 
 function filterGraph(args: string[]): string[] {
@@ -49,69 +42,86 @@ function inputsOf(args: string[]): { options: string[]; file: string }[] {
   return inputs;
 }
 
-describe("buildRenderCommand", () => {
-  const { args } = buildRenderCommand(inputs);
+const splitPiece = {
+  startMs: 200,
+  endMs: 1300,
+  layout: "split" as const,
+  firstFrame: 0,
+  frames: 33,
+};
+const facePiece = {
+  startMs: 1300,
+  endMs: 1900,
+  layout: "face" as const,
+  firstFrame: 33,
+  frames: 18,
+};
+const circlePiece = {
+  startMs: 2500,
+  endMs: 3500,
+  layout: "circle" as const,
+  firstFrame: 51,
+  frames: 30,
+};
+
+const overlays = {
+  headlineImagePath: "/short/out/render/headline.png",
+  captionsListPath: "/short/out/render/captions-0.ffconcat",
+};
+
+describe("buildPieceCommand", () => {
+  const { args } = buildPieceCommand(
+    splitPiece,
+    sources,
+    overlays,
+    "/short/out/render/piece-0.nut",
+  );
   const graph = filterGraph(args);
 
-  test("reads the headline, the caption images, and each piece's part of the recordings", () => {
+  test("reads the overlays and only the piece's part of the camera and of the window, which started 40 ms later", () => {
     expect(inputsOf(args)).toEqual([
-      { options: [], file: inputs.headlineImagePath },
-      { options: ["-f", "concat", "-safe", "0"], file: inputs.captionsListPath },
-      // Split, 200–1300 ms: the camera, and the window 40 ms later in its recording.
-      { options: ["-ss", "0.200", "-t", "1.100"], file: inputs.cameraPath },
-      { options: ["-ss", "0.160", "-t", "1.100"], file: inputs.screenPath },
-      // Face, 1300–1900 ms: the camera only.
-      { options: ["-ss", "1.300", "-t", "0.600"], file: inputs.cameraPath },
-      // Circle, 2500–3500 ms: the camera, the window and the mask.
-      { options: ["-ss", "2.500", "-t", "1.000"], file: inputs.cameraPath },
-      { options: ["-ss", "2.460", "-t", "1.000"], file: inputs.screenPath },
-      { options: ["-loop", "1"], file: inputs.circleMaskPath },
+      { options: [], file: overlays.headlineImagePath },
+      { options: ["-f", "concat"], file: overlays.captionsListPath },
+      { options: ["-ss", "0.200", "-t", "1.100"], file: sources.cameraPath },
+      { options: ["-ss", "0.160", "-t", "1.100"], file: sources.screenPath },
     ]);
   });
 
-  test("scales and crops each piece's camera into its slot, and keeps its sound", () => {
-    expect(graph).toContain(
-      "[2:v]setpts=PTS-STARTPTS,fps=30,scale=1536:864,crop=1080:864:228:0[camera0]",
-    );
-    expect(graph).toContain("[2:a]asetpts=PTS-STARTPTS[audio0]");
+  test("draws the piece on a black frame exactly as long as its frames", () => {
+    expect(graph).toContain("color=c=black:s=1080x1920:r=30:d=1.100[background]");
   });
 
-  test("scales and crops the window into its slot", () => {
-    expect(graph).toContain(
-      "[3:v]setpts=PTS-STARTPTS,fps=30,scale=1878:1056,crop=1080:1056:399:0[screen0]",
-    );
+  test("starts the camera on the frame grid without moving it ahead of its sound", () => {
+    expect(graph).toContain("[2:v]fps=30:start_time=0,scale=1536:864,crop=1080:864:228:0[camera]");
   });
 
-  test("leaves the window out of a face piece", () => {
-    expect(graph.some((statement) => statement.endsWith("[screen1]"))).toBe(false);
+  test("makes the sound exactly as long as the frames, padding or trimming the end", () => {
+    expect(graph).toContain("[2:a]aresample=48000,apad,atrim=end=1.100,asetpts=N/SR/TB[audio]");
   });
 
-  test("cuts the camera into a circle with the mask in a circle piece", () => {
-    expect(graph).toContain("[camera2][7:v]alphamerge[camera2cut]");
+  test("keeps the picture when a recording has no more frames, rather than ending the piece", () => {
+    expect(graph).toContain("[background][screen]overlay=0:0[withscreen]");
+    expect(graph).toContain("[withscreen][camera]overlay=0:1056[composed]");
+    expect(graph.some((statement) => statement.includes("shortest"))).toBe(false);
   });
 
-  test("joins the pieces, then adds the headline and the captions over all of them", () => {
-    expect(graph).toContain(
-      "[piece0][audio0][piece1][audio1][piece2][audio2]concat=n=3:v=1:a=1[joined][joinedaudio]",
-    );
-    // The headline is one image, which the overlay keeps showing to the end.
-    expect(graph).toContain("[joined][0:v]overlay=0:0[headlined]");
+  test("draws the headline, which stays to the end, and the piece's captions over it", () => {
+    expect(graph).toContain("[composed][0:v]overlay=0:0[headlined]");
     expect(graph).toContain("[headlined][1:v]overlay=0:0:eof_action=pass,format=yuv420p[video]");
   });
 
-  test("brings the sound to the loudness YouTube plays at", () => {
-    expect(graph).toContain("[joinedaudio]loudnorm=I=-14:TP=-1.5:LRA=11,aresample=48000[audio]");
-  });
-
-  test("encodes H.264 and AAC at a constant 30 frames per second, ready to stream", () => {
-    const output = args.slice(args.indexOf("-map"));
-    expect(output).toEqual([
+  test("encodes exactly the piece's frames in H.264 at 30 per second, and keeps the sound as it is", () => {
+    expect(args.slice(args.indexOf("-map"))).toEqual([
       "-map",
       "[video]",
       "-map",
       "[audio]",
+      "-frames:v",
+      "33",
       "-c:v",
       "libx264",
+      // YouTube encodes every upload again, so a faster preset with a lower
+      // CRF gives it a high-quality source in a fraction of the time.
       "-preset",
       "veryfast",
       "-crf",
@@ -121,41 +131,90 @@ describe("buildRenderCommand", () => {
       "-r",
       "30",
       "-c:a",
+      "pcm_s16le",
+      "/short/out/render/piece-0.nut",
+    ]);
+  });
+
+  test("leaves the window out of a face piece", () => {
+    const face = buildPieceCommand(facePiece, sources, overlays, "piece.nut");
+    expect(inputsOf(face.args).map((input) => input.file)).toEqual([
+      overlays.headlineImagePath,
+      overlays.captionsListPath,
+      sources.cameraPath,
+    ]);
+    expect(filterGraph(face.args)).toContain("[background][camera]overlay=0:0[composed]");
+  });
+
+  test("cuts the camera into a circle with a mask as long as the piece", () => {
+    const circle = buildPieceCommand(circlePiece, sources, overlays, "piece.nut");
+    expect(inputsOf(circle.args)[4]).toEqual({
+      options: ["-loop", "1", "-framerate", "30", "-t", "1.000"],
+      file: sources.circleMaskPath,
+    });
+    expect(filterGraph(circle.args)).toContain("[camera][4:v]alphamerge[cameracut]");
+  });
+
+  test("pads the window with black when the piece starts before its recording", () => {
+    const early = buildPieceCommand(
+      splitPiece,
+      { ...sources, screenOffsetMs: 500 },
+      overlays,
+      "piece.nut",
+    );
+    expect(inputsOf(early.args)[3]).toEqual({
+      options: ["-ss", "0.000", "-t", "0.800"],
+      file: sources.screenPath,
+    });
+    expect(
+      filterGraph(early.args).some((statement) =>
+        statement.startsWith("[3:v]tpad=start_duration=0.300:color=black,fps=30:start_time=0,"),
+      ),
+    ).toBe(true);
+  });
+
+  test("shows black where the window would be when the piece ends before its recording starts", () => {
+    const early = buildPieceCommand(
+      splitPiece,
+      { ...sources, screenOffsetMs: 2000 },
+      overlays,
+      "piece.nut",
+    );
+    expect(inputsOf(early.args).map((input) => input.file)).not.toContain(sources.screenPath);
+  });
+});
+
+describe("buildFinalCommand", () => {
+  const { args } = buildFinalCommand({
+    piecesListPath: "/short/out/render/pieces.ffconcat",
+    frames: 81,
+    outputPath: "/short/out/short.partial.mp4",
+  });
+
+  test("joins the pieces and copies their picture, which is already encoded", () => {
+    expect(inputsOf(args)).toEqual([
+      { options: ["-f", "concat"], file: "/short/out/render/pieces.ffconcat" },
+    ]);
+    expect(args.slice(args.indexOf("-c:v"), args.indexOf("-c:v") + 2)).toEqual(["-c:v", "copy"]);
+  });
+
+  test("brings the sound to YouTube's loudness, with fresh timestamps and the picture's length", () => {
+    // 81 frames at 30 per second is 2.7 s, which is 129,600 samples at 48 kHz.
+    expect(args[args.indexOf("-af") + 1]).toBe(
+      "apad=pad_dur=0.5,loudnorm=I=-14:TP=-1.5:LRA=11,aresample=48000,asetpts=N/SR/TB,atrim=end_sample=129600",
+    );
+  });
+
+  test("encodes the sound in AAC, in a file ready to stream", () => {
+    expect(args.slice(args.indexOf("-c:a"))).toEqual([
+      "-c:a",
       "aac",
       "-b:a",
       "192k",
       "-movflags",
       "+faststart",
-      inputs.outputPath,
+      "/short/out/short.partial.mp4",
     ]);
-  });
-
-  test("pads the window with black when a piece starts before its recording", () => {
-    const early = buildRenderCommand({
-      ...inputs,
-      screenOffsetMs: 500,
-      pieces: [{ startMs: 200, endMs: 1300, layout: "split" }],
-    });
-    expect(inputsOf(early.args)[3]).toEqual({
-      options: ["-ss", "0.000", "-t", "0.800"],
-      file: inputs.screenPath,
-    });
-    expect(
-      filterGraph(early.args).some((statement) =>
-        statement.startsWith(
-          "[3:v]setpts=PTS-STARTPTS,tpad=start_duration=0.300:color=black,fps=30,",
-        ),
-      ),
-    ).toBe(true);
-  });
-
-  test("shows black where the window would be when a piece ends before its recording starts", () => {
-    const early = buildRenderCommand({
-      ...inputs,
-      screenOffsetMs: 2000,
-      pieces: [{ startMs: 200, endMs: 1300, layout: "split" }],
-    });
-    expect(inputsOf(early.args).map((input) => input.file)).not.toContain(inputs.screenPath);
   });
 });
 
