@@ -1,5 +1,5 @@
 import { describe, expect, test } from "vite-plus/test";
-import { applyLayout, layoutAtWord } from "../../src/edit/segments.ts";
+import { applyLayout, layoutAtTime, layoutAtWord } from "../../src/edit/segments.ts";
 
 describe("layoutAtWord", () => {
   const segments = [
@@ -57,5 +57,23 @@ describe("applyLayout", () => {
     expect(applyLayout(allSplit, { fromWord: 0, toWord: 0 }, "face", 0)).toEqual([
       { fromWord: 0, layout: "face" },
     ]);
+  });
+});
+
+describe("layoutAtTime", () => {
+  const words = [
+    { text: "Anchor", startMs: 300, endMs: 700 },
+    { text: "positioning", startMs: 800, endMs: 1300 },
+    { text: "ignores", startMs: 1400, endMs: 1800 },
+  ];
+  const segments = [
+    { fromWord: 0, layout: "split" as const },
+    { fromWord: 2, layout: "face" as const },
+  ];
+
+  test("switches layout where the padding before the segment's first word starts", () => {
+    expect(layoutAtTime(words, segments, 1299)).toBe("split");
+    expect(layoutAtTime(words, segments, 1300)).toBe("face");
+    expect(layoutAtTime(words, segments, 0)).toBe("split");
   });
 });

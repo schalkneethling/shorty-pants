@@ -26,6 +26,12 @@ The editor also dresses the short. Select words and choose a layout for them: sp
 
 The caption style, the default layout, the pause threshold and the safe zones come from `preset.json` in the shorts root. Without one, the defaults are Noto Sans in white on dark purple, with yellow for the accent.
 
+## Rendering
+
+`short render <short folder>` turns the edits into three files in the short's `out` folder: `short.mp4`, a 1080 × 1920 video at 30 frames per second; `captions.vtt`, to upload in YouTube Studio as the caption track next to the captions drawn into the video; and `upload.txt`, with the headline as a suggested title and the spoken words as a suggested description. The short needs a headline, which `short edit` adds, and can be up to three minutes long.
+
+The headline and captions are drawn by a browser with the same CSS as the editor preview, then placed into the video by FFmpeg, which also brings the sound to the loudness YouTube plays at. The browser is Playwright's Chromium when it is installed, otherwise Google Chrome; `short render` names the exact command that installs the Chromium it looks for, and `SHORTY_PANTS_CHROMIUM` names another Chromium binary.
+
 ## Development
 
 The project uses [Vite+](https://viteplus.dev/) with pnpm and requires Node 24.11 or newer.

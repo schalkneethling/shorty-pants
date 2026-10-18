@@ -6,14 +6,13 @@ import {
   nextPlayableMs,
   screenTimeMs,
   shortTimeMs,
-  wordIndexAt,
 } from "../../src/edit/playback.ts";
 import {
   removedRangesToIndexes,
   toggleRemoved,
   type RemovedWordRanges,
 } from "../../src/edit/removed-words.ts";
-import { applyLayout, layoutAtWord } from "../../src/edit/segments.ts";
+import { applyLayout, layoutAtTime, layoutAtWord } from "../../src/edit/segments.ts";
 import { isLayout, type Layout } from "../../src/schemas/layout-names.ts";
 import { isSameWord } from "../../src/schemas/headline-words.ts";
 import type { Preset } from "../../src/schemas/preset.ts";
@@ -290,8 +289,8 @@ function showPosition(cameraMs: number) {
     );
   });
 
-  // The layout follows the word being said, or the last word said.
-  preview?.showLayout(layoutAtWord(segments, wordIndexAt(words, cameraMs)), screenCrop);
+  // The layout switches at the same moment as in the render.
+  preview?.showLayout(layoutAtTime(words, segments, cameraMs), screenCrop);
   preview?.showCaption(captionAt(captionChunks, cameraMs));
 }
 

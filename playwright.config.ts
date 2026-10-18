@@ -11,6 +11,9 @@ const fakeMediaArguments = [
 
 export default defineConfig({
   testDir: "tests/e2e",
+  // The overlay snapshots come from the bundled font and the same Chromium on
+  // every platform, so one set of images serves them all.
+  snapshotPathTemplate: "{testDir}/__snapshots__/{testFileName}/{arg}{ext}",
   forbidOnly: Boolean(process.env.CI),
   // Recording encodes video in software. Tests running side by side compete
   // for the CPU and can starve the encoder, so they run one at a time.

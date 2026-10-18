@@ -15,7 +15,7 @@ import { createShortProject } from "../../src/edit/short-project-defaults.ts";
 import { defaultPreset } from "../../src/schemas/preset.ts";
 
 // The built pages; the test:e2e script builds them before Playwright runs.
-const webRoot = resolve(import.meta.dirname, "..", "..", "dist-web");
+export const webRoot = resolve(import.meta.dirname, "..", "..", "dist-web");
 const mediaFixtures = resolve(import.meta.dirname, "..", "fixtures", "media");
 
 export const recordedTakes = {
@@ -49,12 +49,15 @@ export interface EditorWorkspace {
   remove: () => Promise<void>;
 }
 
-/** A short folder with the fixture recordings, a transcript and a fresh short.json, served by the editor. */
-export async function createEditorWorkspace(
-  options: { transcript?: typeof transcript } = {},
-): Promise<EditorWorkspace> {
+/**
+ * A short folder with the fixture recordings, their seekable copies, a
+ * transcript and a fresh short.json, in a temporary workspace.
+ */
+export function createShortFolder(
+  options: { transcript?: typeof transcript; short?: Record<string, unknown> } = {},
+): { workspace: string; shortFolder: string } {
   const workspaceTranscript = options.transcript ?? transcript;
-  const workspace = realpathSync(mkdtempSync(join(tmpdir(), "shorty-pants-editor-e2e-")));
+  const workspace = realpathSync(mkdtempSync(join(tmpdir(), "shorty-pants-e2e-")));
   const shortFolder = join(workspace, "2026-10-17-anchor-scroll");
   mkdirSync(join(shortFolder, "takes"), { recursive: true });
   for (const track of ["cam", "screen"]) {
@@ -68,10 +71,23 @@ export async function createEditorWorkspace(
   writeFileSync(join(shortFolder, "transcript.json"), JSON.stringify(workspaceTranscript));
   writeFileSync(
     join(shortFolder, "short.json"),
-    JSON.stringify(
-      createShortProject({ recordedTakes, transcript: workspaceTranscript, preset: defaultPreset }),
-    ),
+    JSON.stringify({
+      ...createShortProject({
+        recordedTakes,
+        transcript: workspaceTranscript,
+        preset: defaultPreset,
+      }),
+      ...options.short,
+    }),
   );
+  return { workspace, shortFolder };
+}
+
+/** A short folder served by the editor. */
+export async function createEditorWorkspace(
+  options: { transcript?: typeof transcript; short?: Record<string, unknown> } = {},
+): Promise<EditorWorkspace> {
+  const { workspace, shortFolder } = createShortFolder(options);
   const server = await startEditorServer({
     shortFolder,
     webRoot,

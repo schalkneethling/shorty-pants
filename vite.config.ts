@@ -26,6 +26,7 @@ export default defineConfig({
       entry: {
         "recorder/recorder": "web/recorder/recorder.ts",
         "editor/editor": "web/editor/editor.ts",
+        "render/render": "web/render/render.ts",
       },
       platform: "browser",
       outDir: "dist-web",
@@ -35,6 +36,8 @@ export default defineConfig({
         { from: "web/recorder/recorder.css", to: "dist-web/recorder" },
         { from: "web/editor/index.html", to: "dist-web/editor" },
         { from: "web/editor/editor.css", to: "dist-web/editor" },
+        { from: "web/render/index.html", to: "dist-web/render" },
+        { from: "web/render/render.css", to: "dist-web/render" },
         { from: "web/shared/base.css", to: "dist-web/shared" },
         { from: "web/shared/layouts.css", to: "dist-web/shared" },
         { from: "web/shared/overlays.css", to: "dist-web/shared" },

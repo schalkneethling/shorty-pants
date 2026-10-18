@@ -1,5 +1,7 @@
-import type { Layout } from "../schemas/layout.ts";
+import type { Layout } from "../schemas/layout-names.ts";
 import type { ShortProject } from "../schemas/short-project.ts";
+import type { TranscriptWord } from "../schemas/transcript.ts";
+import { defaultWordPaddingMs } from "./cut-list.ts";
 
 type Segments = ShortProject["segments"];
 
@@ -45,4 +47,32 @@ export function applyLayout(
     }
   });
   return result;
+}
+
+/**
+ * When each layout segment starts, in camera time. A segment starts with the
+ * padding kept before its first word, but never before the previous word ends.
+ */
+export function layoutChanges(
+  words: TranscriptWord[],
+  segments: Segments,
+): { fromMs: number; layout: Layout }[] {
+  return segments.flatMap((segment) => {
+    if (segment.fromWord === 0) {
+      return [{ fromMs: 0, layout: segment.layout }];
+    }
+    const word = words[segment.fromWord];
+    const previousWord = words[segment.fromWord - 1];
+    if (word === undefined || previousWord === undefined) {
+      return [];
+    }
+    const fromMs = Math.max(previousWord.endMs, word.startMs - defaultWordPaddingMs);
+    return [{ fromMs, layout: segment.layout }];
+  });
+}
+
+/** The layout at a moment in camera time, the same moment the render switches. */
+export function layoutAtTime(words: TranscriptWord[], segments: Segments, ms: number): Layout {
+  const changes = layoutChanges(words, segments);
+  return changes.filter((change) => change.fromMs <= ms).at(-1)?.layout ?? segments[0]!.layout;
 }

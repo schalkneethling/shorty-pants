@@ -1,0 +1,31 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=1080">
+    <title>Overlays · shorty-pants</title>
+    <!-- [html-validate-disable-next require-sri -- served from 127.0.0.1 by the render server, not from a CDN] -->
+    <link rel="stylesheet" href="../shared/layouts.css">
+    <!-- [html-validate-disable-next require-sri -- served from 127.0.0.1 by the render server, not from a CDN] -->
+    <link rel="stylesheet" href="../shared/overlays.css">
+    <!-- [html-validate-disable-next require-sri -- served from 127.0.0.1 by the render server, not from a CDN] -->
+    <link rel="stylesheet" href="./render.css">
+    <!-- [html-validate-disable-next require-sri -- served from 127.0.0.1 by the render server, not from a CDN] -->
+    <script type="module" src="./render.js"></script>
+  </head>
+  <body>
+    <!-- short render screenshots these elements into the overlay images; nobody reads this page. -->
+    <main>
+      <h1 class="visually-hidden">Overlays for the render</h1>
+      <div id="render-frame" class="frame render-frame">
+        <div class="overlays">
+          <p id="headline" class="headline" hidden></p>
+          <p id="captions" class="captions" hidden></p>
+        </div>
+      </div>
+      <div id="circle-mask" class="circle-mask">
+        <div class="circle-mask-shape"></div>
+      </div>
+    </main>
+  </body>
+</html>
