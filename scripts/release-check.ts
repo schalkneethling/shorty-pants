@@ -85,12 +85,13 @@ export function planRelease(candidate: ReleaseCandidate): ReleasePlan {
     problems.push(`The tag ${tag} already exists. Raise the version in package.json first.`);
   }
 
-  // npm can only trust this workflow once the package exists, so the first
-  // version would fail at the publish step, after the approval.
+  // npm can only trust this workflow once the package exists. fledgling
+  // publishes a 0.0.0 placeholder to claim the name; without it, the publish
+  // step would fail after the approval.
   const isUnpublished = publishedVersions.length === 0;
   if (isUnpublished) {
     problems.push(
-      "npm has no version of this package yet. Publish the first release by hand, as docs/releasing.md describes, then turn on trusted publishing.",
+      "npm has no version of this package yet, so it cannot trust this workflow. Claim the name and set up trusted publishing with fledgling first, as docs/releasing.md describes.",
     );
   }
 

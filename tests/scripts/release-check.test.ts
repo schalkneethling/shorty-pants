@@ -47,14 +47,19 @@ describe("planRelease", () => {
     });
   });
 
-  test("refuses the first release, which is published by hand", () => {
+  test("refuses to publish before fledgling has claimed the name", () => {
     const plan = planRelease({ ...ready, publishedVersions: [] });
     expect(plan).toEqual({
       ok: false,
       problems: [
-        "npm has no version of this package yet. Publish the first release by hand, as docs/releasing.md describes, then turn on trusted publishing.",
+        "npm has no version of this package yet, so it cannot trust this workflow. Claim the name and set up trusted publishing with fledgling first, as docs/releasing.md describes.",
       ],
     });
+  });
+
+  test("releases the first real version over fledgling's 0.0.0 placeholder", () => {
+    const plan = planRelease({ ...ready, version: "0.1.0", publishedVersions: ["0.0.0"] });
+    expect(plan).toEqual({ ok: true, tag: "v0.1.0", distTag: "latest" });
   });
 
   test("refuses a stable version below the latest one, which would move latest back", () => {
