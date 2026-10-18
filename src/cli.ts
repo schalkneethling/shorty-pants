@@ -12,6 +12,7 @@ import { ShortError } from "./errors.ts";
 import { captureNote, listNotes, restoreNote } from "./notes/inbox.ts";
 import { openUrl } from "./open-url.ts";
 import { recordShort } from "./recorder/record.ts";
+import { renderShort } from "./render/render.ts";
 import { transcribeShort } from "./transcribe/transcribe.ts";
 
 export interface CliIo {
@@ -35,8 +36,7 @@ type CommandHandler = (args: string[], io: CliIo, context: CliContext) => Promis
 interface CommandDescription {
   name: string;
   summary: string;
-  // Commands that are not built yet name the milestone that brings them.
-  handler: CommandHandler | { milestone: number };
+  handler: CommandHandler;
 }
 
 async function noteCommand(args: string[], io: CliIo, context: CliContext): Promise<number> {
@@ -266,10 +266,54 @@ async function recordCommand(args: string[], io: CliIo, context: CliContext): Pr
 }
 
 const editUsage = "Usage: short edit <short folder> [--no-open]\n";
+const renderUsage = "Usage: short render <short folder>\n";
 
 function formatDuration(milliseconds: number): string {
   const totalSeconds = Math.floor(milliseconds / 1000);
   return `${Math.floor(totalSeconds / 60)}:${String(totalSeconds % 60).padStart(2, "0")}`;
+}
+
+async function renderCommand(args: string[], io: CliIo, context: CliContext): Promise<number> {
+  let parsed;
+  try {
+    parsed = parseArgs({
+      args,
+      allowPositionals: true,
+      options: { help: { type: "boolean", default: false } },
+    });
+  } catch {
+    io.stderr(renderUsage);
+    return 2;
+  }
+  if (parsed.values.help) {
+    io.stdout(renderUsage);
+    return 0;
+  }
+  const [folder] = parsed.positionals;
+  if (folder === undefined || parsed.positionals.length > 1) {
+    io.stderr(renderUsage);
+    return 2;
+  }
+
+  const startedAt = Date.now();
+  io.stdout("Rendering the short. This takes about as long as the short itself.\n");
+  const result = await renderShort({
+    shortFolder: resolve(context.cwd, folder),
+    webRoot: context.webRoot,
+    run: context.runCommand,
+    executablePath: context.environment.SHORTY_PANTS_CHROMIUM,
+  });
+  const seconds = Math.round((Date.now() - startedAt) / 1000);
+  io.stdout(
+    [
+      `Rendered a ${formatDuration(result.durationMs)} short in ${seconds} seconds:`,
+      `  ${result.videoPath}`,
+      `  ${result.captionsPath}, to upload as the caption track`,
+      `  ${result.uploadPath}, with a title and description to paste in`,
+      "",
+    ].join("\n"),
+  );
+  return 0;
 }
 
 async function editCommand(args: string[], io: CliIo, context: CliContext): Promise<number> {
@@ -354,7 +398,7 @@ const commands: CommandDescription[] = [
   {
     name: "render",
     summary: "Render short.mp4, captions.vtt and upload.txt",
-    handler: { milestone: 7 },
+    handler: renderCommand,
   },
 ];
 
@@ -415,13 +459,6 @@ export async function run(
   if (command === undefined) {
     io.stderr(`Unknown command "${commandName}". Run "short --help" to see the commands.\n`);
     return 2;
-  }
-
-  if (typeof command.handler !== "function") {
-    io.stderr(
-      `"short ${command.name}" is not available yet. It is planned for milestone ${command.handler.milestone}.\n`,
-    );
-    return 1;
   }
 
   try {

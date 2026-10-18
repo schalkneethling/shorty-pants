@@ -55,12 +55,6 @@ describe("short CLI", () => {
     expect(await run(["publish"], io)).toBe(2);
     expect(output.stderr).toContain('Unknown command "publish"');
   });
-
-  test("reports a command that is planned but not built yet and exits with 1", async () => {
-    const { io, output } = createIo();
-    expect(await run(["render"], io)).toBe(1);
-    expect(output.stderr).toContain('"short render" is not available yet');
-  });
 });
 
 describe("short note, notes and from", () => {

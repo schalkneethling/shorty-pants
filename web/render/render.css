@@ -1,0 +1,39 @@
+/* The page is a drawing surface at the size of the Shorts frame. */
+
+body {
+  background-color: transparent;
+  margin: 0;
+}
+
+main {
+  display: grid;
+  inline-size: 1080px;
+}
+
+/* The overlays are drawn on nothing, so their images keep a transparent background. */
+.render-frame {
+  background-color: transparent;
+}
+
+/* A white circle on black, drawn with the same rounding as the preview's circle camera. */
+.circle-mask {
+  background-color: #000;
+  block-size: calc(var(--height) * 1px);
+  inline-size: calc(var(--width) * 1px);
+}
+
+.circle-mask-shape {
+  background-color: #fff;
+  block-size: 100%;
+  border-radius: 50%;
+  inline-size: 100%;
+}
+
+.visually-hidden {
+  block-size: 1px;
+  clip-path: inset(50%);
+  inline-size: 1px;
+  overflow: hidden;
+  position: absolute;
+  white-space: nowrap;
+}
