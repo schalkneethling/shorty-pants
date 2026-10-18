@@ -29,7 +29,12 @@
       "repository": "schalkneethling/shorty-pants",
       "requiredChecks": [],
       "mergeMethods": ["squash"],
-      "codeqlLanguages": ["actions", "javascript-typescript"]
+      "codeqlLanguages": ["actions", "javascript-typescript"],
+      "releaseEnvironment": {
+        "name": "publish",
+        "reviewers": ["schalkneethling"],
+        "branches": ["main"]
+      }
     }
   }
 }
