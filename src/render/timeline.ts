@@ -7,8 +7,6 @@ import type { Layout } from "../schemas/layout-names.ts";
 import type { ShortProject } from "../schemas/short-project.ts";
 import type { TranscriptWord } from "../schemas/transcript.ts";
 
-const frameDurationMs = 1000 / frame.fps;
-
 /** A stretch of the recordings, in camera time, that goes into the short with one layout. */
 export interface RenderPiece {
   startMs: number;
@@ -48,7 +46,11 @@ export function framePieces(pieces: RenderPiece[]): FramedPiece[] {
   return framed;
 }
 
-/** Splits the kept ranges where the layout changes. Pieces shorter than a frame are left out. */
+/**
+ * Splits the kept ranges where the layout changes. Every piece is kept, even
+ * one shorter than a frame: framePieces decides which get frames, so the
+ * frame grid counts all of the short's time.
+ */
 export function renderPieces(input: {
   words: TranscriptWord[];
   keepRanges: KeepRange[];
@@ -65,10 +67,7 @@ export function renderPieces(input: {
     for (let index = 0; index < edges.length - 1; index += 1) {
       const startMs = edges[index]!;
       const endMs = edges[index + 1]!;
-      const isLongEnoughForAFrame = endMs - startMs >= frameDurationMs;
-      if (isLongEnoughForAFrame) {
-        pieces.push({ startMs, endMs, layout: layoutAtTime(input.words, input.segments, startMs) });
-      }
+      pieces.push({ startMs, endMs, layout: layoutAtTime(input.words, input.segments, startMs) });
     }
   }
   return pieces;

@@ -76,6 +76,22 @@ async function videoSize(run: CommandRunner, path: string): Promise<Size> {
   return { width: width!, height: height! };
 }
 
+/** Whether a recording has a sound track. */
+async function hasSound(run: CommandRunner, path: string): Promise<boolean> {
+  const { stdout } = await runTool(run, "ffprobe", [
+    "-v",
+    "error",
+    "-select_streams",
+    "a",
+    "-show_entries",
+    "stream=index",
+    "-of",
+    "csv=p=0",
+    path,
+  ]);
+  return stdout.trim() !== "";
+}
+
 function formatLength(ms: number): string {
   const totalSeconds = Math.floor(ms / 1000);
   return `${Math.floor(totalSeconds / 60)}:${String(totalSeconds % 60).padStart(2, "0")}`;
@@ -143,10 +159,16 @@ export async function renderShort(options: RenderOptions): Promise<RenderResult>
     },
     run,
   );
-  const [cameraSize, screenSize] = await Promise.all([
+  const [cameraSize, screenSize, cameraHasSound] = await Promise.all([
     videoSize(run, cameraPath),
     videoSize(run, screenPath),
+    hasSound(run, cameraPath),
   ]);
+  if (!cameraHasSound) {
+    throw new ShortError(
+      `The camera recording ${cameraPath} has no sound, which the short needs. Record the take again with a microphone.`,
+    );
+  }
 
   const words = keptWords(transcript.words, keepRanges);
   const chunks = chunkCaptions(words, preset.captions, keepRanges);

@@ -9,6 +9,8 @@ import {
   splitCuesAtLayoutChanges,
 } from "../../src/render/timeline.ts";
 import { chunkCaptions } from "../../src/edit/captions.ts";
+import { computeKeepRanges } from "../../src/edit/cut-list.ts";
+import { keptDurationMs } from "../../src/edit/playback.ts";
 
 const words = [
   { text: "Anchor", startMs: 300, endMs: 700 },
@@ -63,7 +65,7 @@ describe("renderPieces", () => {
     ]);
   });
 
-  test("leaves out a piece shorter than one frame", () => {
+  test("keeps a piece shorter than one frame, so the frame grid still counts its time", () => {
     const segments = [
       { fromWord: 0, layout: "split" as const },
       { fromWord: 2, layout: "face" as const },
@@ -72,7 +74,35 @@ describe("renderPieces", () => {
     const ranges = [{ startMs: 200, endMs: 1310 }];
     expect(renderPieces({ words, keepRanges: ranges, segments })).toEqual([
       { startMs: 200, endMs: 1300, layout: "split" },
+      { startMs: 1300, endMs: 1310, layout: "face" },
     ]);
+  });
+
+  test("gives the short as many frames as its kept time, however many slivers the cuts leave", () => {
+    // A short filler word just after each kept word is cut, which leaves a
+    // 20 ms sliver of padding after it.
+    const wordsWithFillers = Array.from({ length: 40 }, (_, index) => [
+      { text: `word${index}`, startMs: 1000 * index, endMs: 1000 * index + 400 },
+      { text: "um", startMs: 1000 * index + 420, endMs: 1000 * index + 480 },
+    ]).flat();
+    const removedWords = wordsWithFillers.flatMap((_, index) =>
+      index % 2 === 1 ? [[index, index] as [number, number]] : [],
+    );
+    const ranges = computeKeepRanges({
+      words: wordsWithFillers,
+      trim: { startMs: 0, endMs: 40_000 },
+      removedWords,
+      pauseThresholdMs: 600,
+    });
+    const pieces = framePieces(
+      renderPieces({
+        words: wordsWithFillers,
+        keepRanges: ranges,
+        segments: [{ fromWord: 0, layout: "split" }],
+      }),
+    );
+    const frames = pieces.reduce((total, piece) => total + piece.frames, 0);
+    expect(frames).toBe(frameCount(keptDurationMs(ranges)));
   });
 });
 

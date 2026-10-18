@@ -22,7 +22,7 @@ function filterGraph(args: string[]): string[] {
   return args[args.indexOf("-filter_complex") + 1]!.split(";");
 }
 
-/** Each input file with the options before it, such as ["-ss", "0.200", "-t", "1.100"]. */
+/** Each input file with the options before it, such as ["-ss", "0.200", "-t", "1.033"]. */
 function inputsOf(args: string[]): { options: string[]; file: string }[] {
   const inputs: { options: string[]; file: string }[] = [];
   let options: string[] = [];
@@ -42,12 +42,13 @@ function inputsOf(args: string[]): { options: string[]; file: string }[] {
   return inputs;
 }
 
+// 31 frames is 1.0333… s, which milliseconds cannot hold exactly.
 const splitPiece = {
   startMs: 200,
-  endMs: 1300,
+  endMs: 1233,
   layout: "split" as const,
   firstFrame: 0,
-  frames: 33,
+  frames: 31,
 };
 const facePiece = {
   startMs: 1300,
@@ -82,21 +83,24 @@ describe("buildPieceCommand", () => {
     expect(inputsOf(args)).toEqual([
       { options: [], file: overlays.headlineImagePath },
       { options: ["-f", "concat"], file: overlays.captionsListPath },
-      { options: ["-ss", "0.200", "-t", "1.100"], file: sources.cameraPath },
-      { options: ["-ss", "0.160", "-t", "1.100"], file: sources.screenPath },
+      { options: ["-ss", "0.200", "-t", "1.033"], file: sources.cameraPath },
+      { options: ["-ss", "0.160", "-t", "1.033"], file: sources.screenPath },
     ]);
   });
 
   test("draws the piece on a black frame exactly as long as its frames", () => {
-    expect(graph).toContain("color=c=black:s=1080x1920:r=30:d=1.100[background]");
+    expect(graph).toContain("color=c=black:s=1080x1920:r=30:d=1.033[background]");
   });
 
   test("starts the camera on the frame grid without moving it ahead of its sound", () => {
     expect(graph).toContain("[2:v]fps=30:start_time=0,scale=1536:864,crop=1080:864:228:0[camera]");
   });
 
-  test("makes the sound exactly as long as the frames, padding or trimming the end", () => {
-    expect(graph).toContain("[2:a]aresample=48000,apad,atrim=end=1.100,asetpts=N/SR/TB[audio]");
+  test("makes the sound exactly as long as the frames, to the sample", () => {
+    // 31 frames at 30 per second is 49,600 samples at 48 kHz.
+    expect(graph).toContain(
+      "[2:a]aresample=48000,apad,atrim=end_sample=49600,asetpts=N/SR/TB[audio]",
+    );
   });
 
   test("keeps the picture when a recording has no more frames, rather than ending the piece", () => {
@@ -107,7 +111,13 @@ describe("buildPieceCommand", () => {
 
   test("draws the headline, which stays to the end, and the piece's captions over it", () => {
     expect(graph).toContain("[composed][0:v]overlay=0:0[headlined]");
-    expect(graph).toContain("[headlined][1:v]overlay=0:0:eof_action=pass,format=yuv420p[video]");
+    expect(graph).toContain(
+      "[headlined][1:v]overlay=0:0:eof_action=pass,format=yuv420p,trim=end_frame=31[video]",
+    );
+  });
+
+  test("ends the picture inside the graph, so the output never closes before the sound is written", () => {
+    expect(args).not.toContain("-frames:v");
   });
 
   test("encodes exactly the piece's frames in H.264 at 30 per second, and keeps the sound as it is", () => {
@@ -116,8 +126,6 @@ describe("buildPieceCommand", () => {
       "[video]",
       "-map",
       "[audio]",
-      "-frames:v",
-      "33",
       "-c:v",
       "libx264",
       // YouTube encodes every upload again, so a faster preset with a lower
@@ -163,7 +171,7 @@ describe("buildPieceCommand", () => {
       "piece.nut",
     );
     expect(inputsOf(early.args)[3]).toEqual({
-      options: ["-ss", "0.000", "-t", "0.800"],
+      options: ["-ss", "0.000", "-t", "0.733"],
       file: sources.screenPath,
     });
     expect(
@@ -201,7 +209,7 @@ describe("buildFinalCommand", () => {
   test("brings the sound to YouTube's loudness, with fresh timestamps and the picture's length", () => {
     // 81 frames at 30 per second is 2.7 s, which is 129,600 samples at 48 kHz.
     expect(args[args.indexOf("-af") + 1]).toBe(
-      "apad=pad_dur=0.5,loudnorm=I=-14:TP=-1.5:LRA=11,aresample=48000,asetpts=N/SR/TB,atrim=end_sample=129600",
+      "aresample=48000:async=1:first_pts=0,apad=pad_dur=0.5,loudnorm=I=-14:TP=-1.5:LRA=11,aresample=48000,asetpts=N/SR/TB,atrim=end_sample=129600",
     );
   });
 

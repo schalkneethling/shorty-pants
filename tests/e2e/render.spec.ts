@@ -1,11 +1,12 @@
-import { execFileSync } from "node:child_process";
-import { mkdirSync, readFileSync, rmSync } from "node:fs";
+import { execFileSync, spawnSync } from "node:child_process";
+import { mkdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { expect, test, type Page } from "@playwright/test";
 import { runCommand } from "../../src/commands.ts";
 import { computeKeepRanges } from "../../src/edit/cut-list.ts";
 import { layoutGeometry } from "../../src/edit/layout-geometry.ts";
 import { keptDurationMs } from "../../src/edit/playback.ts";
+import { buildPieceCommand, type PieceSources } from "../../src/render/ffmpeg-command.ts";
 import { renderOverlays } from "../../src/render/overlays.ts";
 import { renderShort } from "../../src/render/render.ts";
 import { defaultPreset } from "../../src/schemas/preset.ts";
@@ -134,13 +135,252 @@ test("keeps the frames, the sound and the short's time together across many cuts
   // The sound lasts as long as the picture, to within a frame.
   expect(Math.abs(Number(audio.duration) - Number(video.duration))).toBeLessThan(1 / 30);
 
-  // Reading the whole file reports no timestamps that run backwards.
-  const decodeLog = execFileSync(
+  // Reading the whole file reports no timestamps that run backwards. FFmpeg
+  // writes its warnings to stderr.
+  const decode = spawnSync("ffmpeg", ["-v", "warning", "-i", result.videoPath, "-f", "null", "-"], {
+    encoding: "utf8",
+  });
+  expect(decode.status).toBe(0);
+  expect(decode.stderr).toBe("");
+});
+
+/**
+ * Recordings that flash white and beep for the first 100 ms of every second,
+ * so the picture and the sound can be lined up after the cuts.
+ */
+function writeFlashAndBeepTakes(folder: string, seconds: number) {
+  const flashes = `color=c=black:s=320x180:r=30:d=${seconds}[black];color=c=white:s=320x180:r=30:d=${seconds}[white];[black][white]overlay=enable='lt(mod(t\\,1)\\,0.1)',format=yuv420p`;
+  execFileSync("ffmpeg", [
+    "-v",
+    "error",
+    "-y",
+    "-f",
+    "lavfi",
+    "-i",
+    flashes,
+    "-f",
+    "lavfi",
+    "-i",
+    `sine=f=1000:d=${seconds},volume=volume=0:enable='gte(mod(t\\,1)\\,0.1)'`,
+    "-c:v",
+    "libvpx",
+    "-c:a",
+    "libopus",
+    join(folder, "takes", "cam.webm"),
+  ]);
+  execFileSync("ffmpeg", [
+    "-v",
+    "error",
+    "-y",
+    "-f",
+    "lavfi",
+    "-i",
+    flashes,
+    "-c:v",
+    "libvpx",
+    join(folder, "takes", "screen.webm"),
+  ]);
+  rmSync(join(folder, "takes", "cam.preview.webm"), { force: true });
+  rmSync(join(folder, "takes", "screen.preview.webm"), { force: true });
+}
+
+/** When the middle of the picture turns white, in seconds. */
+function flashTimes(videoPath: string): number[] {
+  const { stdout } = spawnSync(
     "ffmpeg",
-    ["-v", "warning", "-i", result.videoPath, "-f", "null", "-"],
-    { encoding: "utf8", stdio: ["ignore", "pipe", "pipe"] },
+    [
+      "-v",
+      "error",
+      "-i",
+      videoPath,
+      "-vf",
+      "crop=200:200:440:800,signalstats,metadata=print:key=lavfi.signalstats.YAVG:file=-",
+      "-f",
+      "null",
+      "-",
+    ],
+    { encoding: "utf8" },
   );
-  expect(decodeLog).not.toMatch(/non-monotonic|backward/i);
+  const times: number[] = [];
+  let frameTime = 0;
+  let wasBright = false;
+  for (const line of stdout.split("\n")) {
+    const time = /pts_time:([\d.]+)/.exec(line);
+    if (time !== null) {
+      frameTime = Number(time[1]);
+    }
+    const brightness = /YAVG=([\d.]+)/.exec(line);
+    if (brightness !== null) {
+      const isBright = Number(brightness[1]) > 128;
+      if (isBright && !wasBright) {
+        times.push(frameTime);
+      }
+      wasBright = isBright;
+    }
+  }
+  return times;
+}
+
+/** When each beep starts, in seconds. */
+function beepTimes(videoPath: string): number[] {
+  const { stderr } = spawnSync(
+    "ffmpeg",
+    [
+      "-v",
+      "info",
+      "-i",
+      videoPath,
+      "-vn",
+      "-af",
+      "silencedetect=n=-40dB:d=0.02",
+      "-f",
+      "null",
+      "-",
+    ],
+    { encoding: "utf8" },
+  );
+  return [...stderr.matchAll(/silence_end: ([\d.]+)/g)].map((match) => Number(match[1]));
+}
+
+test("keeps the picture and the sound in step after many cuts", async () => {
+  test.setTimeout(120_000);
+  const seconds = 12;
+  // A word over each flash and beep; every other one is cut.
+  const beatWords = Array.from({ length: seconds - 1 }, (_, index) => ({
+    text: `beat${index + 1}`,
+    startMs: (index + 1) * 1000 - 50,
+    endMs: (index + 1) * 1000 + 150,
+  }));
+  rmSync(workspace, { recursive: true, force: true });
+  ({ workspace, shortFolder } = createShortFolder({
+    transcript: { ...transcript, durationMs: seconds * 1000, words: beatWords },
+    short: {
+      headline: dressedShort.headline,
+      trim: { startMs: 500, endMs: seconds * 1000 - 500 },
+      removedWords: beatWords.flatMap((_, index) => (index % 2 === 1 ? [[index, index]] : [])),
+      segments: [{ fromWord: 0, layout: "face" }],
+    },
+  }));
+  writeFlashAndBeepTakes(shortFolder, seconds);
+
+  const result = await renderShort({ shortFolder, webRoot, run: runCommand, executablePath });
+  const flashes = flashTimes(result.videoPath);
+  const beeps = beepTimes(result.videoPath);
+  // One flash and one beep in each kept word. silencedetect also reports the
+  // end of the file, so each flash is matched with its nearest beep.
+  expect(flashes.length).toBe(6);
+  for (const flash of flashes) {
+    const nearestBeep = Math.min(...beeps.map((beep) => Math.abs(beep - flash)));
+    // Within one and a half frames, after every cut.
+    expect(nearestBeep).toBeLessThan(0.05);
+  }
+});
+
+test("renders each piece with exactly its frames and 1600 samples of sound per frame", () => {
+  const workDir = join(workspace, "pieces");
+  mkdirSync(workDir);
+  // An empty headline and no captions: this test is about the frames and the sound.
+  execFileSync("ffmpeg", [
+    "-v",
+    "error",
+    "-f",
+    "lavfi",
+    "-i",
+    "color=c=black@0:s=1080x1920,format=rgba",
+    "-frames:v",
+    "1",
+    join(workDir, "blank.png"),
+  ]);
+  // The circle mask is the size of the circle camera.
+  execFileSync("ffmpeg", [
+    "-v",
+    "error",
+    "-f",
+    "lavfi",
+    "-i",
+    "color=c=white:s=360x360",
+    "-frames:v",
+    "1",
+    join(workDir, "mask.png"),
+  ]);
+  writeFileSync(
+    join(workDir, "captions.ffconcat"),
+    "ffconcat version 1.0\nfile 'blank.png'\nduration 5\n",
+  );
+  const sources: PieceSources = {
+    cameraPath: join(shortFolder, "takes", "cam.preview.webm"),
+    screenPath: join(shortFolder, "takes", "screen.preview.webm"),
+    cameraSize: { width: 320, height: 180 },
+    screenSize: { width: 320, height: 240 },
+    screenOffsetMs: 40,
+    screenCrop: undefined,
+    safeZones: defaultPreset.safeZones,
+    circleMaskPath: join(workDir, "mask.png"),
+  };
+  // Frame counts that are not multiples of 3 have lengths milliseconds cannot
+  // hold, and the 2-frame piece is the kind a cut leaves behind.
+  const pieces = [
+    { startMs: 300, endMs: 1333, layout: "split" as const, firstFrame: 0, frames: 31 },
+    { startMs: 1400, endMs: 1467, layout: "face" as const, firstFrame: 31, frames: 2 },
+    { startMs: 2500, endMs: 3667, layout: "circle" as const, firstFrame: 33, frames: 35 },
+  ];
+  for (const [index, piece] of pieces.entries()) {
+    const output = join(workDir, `piece-${index}.nut`);
+    const { args } = buildPieceCommand(
+      piece,
+      sources,
+      {
+        headlineImagePath: join(workDir, "blank.png"),
+        captionsListPath: join(workDir, "captions.ffconcat"),
+      },
+      output,
+    );
+    execFileSync("ffmpeg", args);
+    const frames = execFileSync(
+      "ffprobe",
+      [
+        "-v",
+        "error",
+        "-count_frames",
+        "-select_streams",
+        "v",
+        "-show_entries",
+        "stream=nb_read_frames",
+        "-of",
+        "csv=p=0",
+        output,
+      ],
+      { encoding: "utf8" },
+    );
+    expect(Number(frames.trim()), `frames of piece ${index}`).toBe(piece.frames);
+    const sound = execFileSync(
+      "ffmpeg",
+      ["-v", "error", "-i", output, "-vn", "-f", "s16le", "-ac", "1", "-"],
+      {
+        maxBuffer: 64 * 1024 * 1024,
+      },
+    );
+    expect(sound.length / 2, `samples of piece ${index}`).toBe(piece.frames * 1600);
+  }
+});
+
+test("explains a camera recording without sound", async () => {
+  execFileSync("ffmpeg", [
+    "-v",
+    "error",
+    "-y",
+    "-f",
+    "lavfi",
+    "-i",
+    "color=c=black:s=320x180:r=30:d=4",
+    "-c:v",
+    "libvpx",
+    join(shortFolder, "takes", "cam.webm"),
+  ]);
+  rmSync(join(shortFolder, "takes", "cam.preview.webm"), { force: true });
+  await expect(
+    renderShort({ shortFolder, webRoot, run: runCommand, executablePath }),
+  ).rejects.toThrow("has no sound");
 });
 
 test("writes the captions as WebVTT and a title and description to upload with", async () => {

@@ -79,6 +79,7 @@ export function buildPieceCommand(
 ): { args: string[] } {
   const geometry = layoutGeometry(piece.layout, sources.safeZones);
   const pieceSeconds = seconds((piece.frames * 1000) / frame.fps);
+  const pieceSamples = (piece.frames * audioSampleRate) / frame.fps;
   const inputArgs: string[][] = [];
   /** Adds an input and returns its index in the command. */
   const addInput = (args: string[]) => inputArgs.push(args) - 1;
@@ -97,8 +98,9 @@ export function buildPieceCommand(
   const graph = [
     `color=c=black:s=${frame.width}x${frame.height}:r=${frame.fps}:d=${pieceSeconds}[background]`,
     `[${cameraInput}:v]${frameGrid},${scaleAndCrop(sources.cameraSize, undefined, geometry.camera)}[camera]`,
-    // The sound is padded with silence or trimmed to exactly the frames' length.
-    `[${cameraInput}:a]aresample=${audioSampleRate},apad,atrim=end=${pieceSeconds},asetpts=N/SR/TB[audio]`,
+    // The sound is padded with silence or trimmed to exactly the frames'
+    // length, counted in samples so no rounding builds up across pieces.
+    `[${cameraInput}:a]aresample=${audioSampleRate},apad,atrim=end_sample=${pieceSamples},asetpts=N/SR/TB[audio]`,
   ];
 
   // Overlays keep showing a recording's last frame when it has no more, so a
@@ -145,7 +147,9 @@ export function buildPieceCommand(
     `[${base}][${camera}]overlay=${geometry.camera.x}:${geometry.camera.y}[composed]`,
     // The headline is a single image; overlay keeps showing an input's last frame.
     `[composed][${headlineInput}:v]overlay=0:0[headlined]`,
-    `[headlined][${captionsInput}:v]overlay=0:0:eof_action=pass,format=yuv420p[video]`,
+    // The picture ends inside the graph. Limiting the output's frames instead
+    // would close the file before the last of the sound is written.
+    `[headlined][${captionsInput}:v]overlay=0:0:eof_action=pass,format=yuv420p,trim=end_frame=${piece.frames}[video]`,
   );
 
   return {
@@ -158,8 +162,6 @@ export function buildPieceCommand(
       "[video]",
       "-map",
       "[audio]",
-      "-frames:v",
-      String(piece.frames),
       "-c:v",
       "libx264",
       // YouTube encodes every upload again, so a faster preset with a lower
@@ -194,6 +196,9 @@ export function buildFinalCommand(input: {
   // to the picture's exact length after. Its output timestamps do not follow
   // its samples either, so they are counted again from the samples.
   const audioFilter = [
+    // Any gap between pieces is filled with silence rather than closed, so
+    // the sound can never move ahead of the picture.
+    `aresample=${audioSampleRate}:async=1:first_pts=0`,
     "apad=pad_dur=0.5",
     "loudnorm=I=-14:TP=-1.5:LRA=11",
     `aresample=${audioSampleRate}`,
