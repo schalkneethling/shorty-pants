@@ -2,7 +2,7 @@
 
 `@schalkneethling/shorty-pants` is published to npm by `.github/workflows/publish.yml` with trusted publishing. GitHub Actions signs in to npm through OpenID Connect (OIDC), so no npm token is stored in the repository, and npm attaches a provenance statement that links each version to the workflow run that built it.
 
-npm can only set up trusted publishing for a package that already exists. The first version is therefore published by hand, and every version after it comes from the workflow.
+npm can only set up trusted publishing for a package that already exists. The first version is therefore published by hand, and later versions normally come from the workflow.
 
 ## Before the first release
 

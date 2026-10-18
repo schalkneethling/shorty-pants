@@ -29,6 +29,7 @@ const releasableVersion = new RegExp(
   String.raw`^(0|[1-9]\d*)\.(0|[1-9]\d*)\.(0|[1-9]\d*)(-${prereleasePart}(\.${prereleasePart})*)?$`,
 );
 
+/** Whether a version has a prerelease part, such as -beta.1. */
 function isPrerelease(version: string): boolean {
   return version.includes("-");
 }
@@ -129,6 +130,7 @@ export function hasExactTag(refs: { ref: string }[], tag: string): boolean {
   return refs.some((ref) => ref.ref === `refs/tags/${tag}`);
 }
 
+/** Runs a command and returns what it printed. */
 function run(command: string, args: string[]): string {
   // npm refuses to run inside this project, whose devEngines names pnpm, so
   // every command runs from the temporary folder instead.
@@ -163,6 +165,7 @@ function readTagExists(repository: string, tag: string): boolean {
   return hasExactTag(refs, tag);
 }
 
+/** Reads a variable GitHub Actions sets, and fails clearly without it. */
 function requireEnvironment(name: string): string {
   const value = process.env[name];
   if (!value) {
@@ -171,6 +174,7 @@ function requireEnvironment(name: string): string {
   return value;
 }
 
+/** Checks the version in package.json and hands the plan to the workflow. */
 function main() {
   const packageJson = JSON.parse(readFileSync("package.json", "utf8"));
   const version = String(packageJson.version);
