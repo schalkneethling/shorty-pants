@@ -1,4 +1,5 @@
 import { randomBytes } from "node:crypto";
+import { createRequire } from "node:module";
 import { join } from "node:path";
 import { chromium, type Browser } from "playwright-core";
 import type { Rect, Size } from "../edit/layout-geometry.ts";
@@ -52,6 +53,18 @@ export interface OverlayFiles {
   circleMask: string;
 }
 
+/**
+ * The command that installs the Chromium build the installed playwright-core
+ * looks for. Each Playwright release has its own build, so an install by a
+ * different version would not be found.
+ */
+export function chromiumInstallCommand(): string {
+  const { version } = createRequire(import.meta.url)("playwright-core/package.json") as {
+    version: string;
+  };
+  return `npx playwright-core@${version} install chromium`;
+}
+
 async function launchBrowser(executablePath: string | undefined): Promise<Browser> {
   if (executablePath !== undefined) {
     try {
@@ -72,7 +85,7 @@ async function launchBrowser(executablePath: string | undefined): Promise<Browse
     return await chromium.launch({ channel: "chrome" });
   } catch {
     throw new ShortError(
-      "Rendering needs Chrome or Chromium. Install Google Chrome, run npx playwright install chromium, or set SHORTY_PANTS_CHROMIUM to a Chromium binary.",
+      `Rendering needs Chrome or Chromium. Install Google Chrome, run ${chromiumInstallCommand()}, or set SHORTY_PANTS_CHROMIUM to a Chromium binary.`,
     );
   }
 }
