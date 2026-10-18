@@ -1,0 +1,150 @@
+/*
+ * The headline and the captions. The editor preview uses these styles now,
+ * and the render draws the same elements, so both look the same.
+ */
+
+@font-face {
+  font-display: block;
+  font-family: "Noto Sans";
+  font-style: normal;
+  font-weight: 700;
+  src: url("./fonts/noto-sans-latin-700-normal.woff2") format("woff2");
+}
+
+@property --caption-text {
+  inherits: true;
+  initial-value: #fff;
+  syntax: "<color>";
+}
+
+@property --caption-background {
+  inherits: true;
+  initial-value: #2e1065;
+  syntax: "<color>";
+}
+
+@property --caption-accent {
+  inherits: true;
+  initial-value: #facc15;
+  syntax: "<color>";
+}
+
+.overlays {
+  font-family: "Noto Sans", sans-serif;
+  font-weight: 700;
+  inset: 0;
+  pointer-events: none;
+  position: absolute;
+}
+
+.headline,
+.captions {
+  align-items: center;
+  color: var(--caption-text);
+  display: flex;
+  justify-content: center;
+  line-height: 1.25;
+  margin: 0;
+  text-align: center;
+}
+
+.headline[hidden],
+.captions[hidden] {
+  display: none;
+}
+
+/* Two lines of headline fit in its area; anything longer is clipped, and
+   the editor says so. */
+.headline {
+  align-items: start;
+  font-size: calc(64 * var(--frame-pixel));
+  overflow: hidden;
+}
+
+.captions {
+  font-size: calc(60 * var(--frame-pixel));
+}
+
+/* The text sits on a dark band that follows each line, so it reads over any video. */
+.headline > span,
+.captions > span {
+  background-color: var(--caption-background);
+  border-radius: calc(16 * var(--frame-pixel));
+  box-decoration-break: clone;
+  padding-block: calc(8 * var(--frame-pixel));
+  padding-inline: calc(20 * var(--frame-pixel));
+}
+
+.headline mark {
+  background-color: transparent;
+  color: var(--caption-accent);
+}
+
+.captions .is-current {
+  color: var(--caption-accent);
+}
+
+@property --safe-top {
+  inherits: true;
+  initial-value: 0;
+  syntax: "<number>";
+}
+
+@property --safe-bottom {
+  inherits: true;
+  initial-value: 0;
+  syntax: "<number>";
+}
+
+@property --safe-left {
+  inherits: true;
+  initial-value: 0;
+  syntax: "<number>";
+}
+
+@property --safe-right {
+  inherits: true;
+  initial-value: 0;
+  syntax: "<number>";
+}
+
+/* The parts of the frame that YouTube's own buttons and text cover. */
+.safe-zone {
+  /* Dimming, rather than a tint, shows up over any video. */
+  background-color: rgb(0 0 0 / 55%);
+  outline: calc(3 * var(--frame-pixel)) dashed rgb(255 255 255 / 80%);
+  position: absolute;
+}
+
+.safe-zones {
+  inset: 0;
+  position: absolute;
+}
+
+.safe-zones[hidden] {
+  display: none;
+}
+
+.safe-zone-top {
+  block-size: calc(var(--safe-top) * var(--frame-pixel));
+  inset-block-start: 0;
+  inset-inline: 0;
+}
+
+.safe-zone-bottom {
+  block-size: calc(var(--safe-bottom) * var(--frame-pixel));
+  inset-block-end: 0;
+  inset-inline: 0;
+}
+
+.safe-zone-left {
+  inline-size: calc(var(--safe-left) * var(--frame-pixel));
+  inset-block: 0;
+  inset-inline-start: 0;
+}
+
+.safe-zone-right {
+  inline-size: calc(var(--safe-right) * var(--frame-pixel));
+  inset-block: 0;
+  inset-inline-end: 0;
+}

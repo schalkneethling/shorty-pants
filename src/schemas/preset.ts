@@ -1,12 +1,9 @@
 import { z } from "zod";
+import { minimumSafeArea } from "../edit/layout-geometry.ts";
+import { frame } from "./frame.ts";
 import { layoutSchema } from "./layout.ts";
 
-/** The Shorts frame: 1080 × 1920 pixels at a constant 30 frames per second. */
-export const frame = {
-  width: 1080,
-  height: 1920,
-  fps: 30,
-} as const;
+export { frame };
 
 const hexColor = z.string().regex(/^#[0-9a-f]{6}$/i, "Use a six-digit hex color, such as #2e1065.");
 const pixels = z.number().int().nonnegative();
@@ -15,6 +12,9 @@ const captionStyleSchema = z.object({
   fontFamily: z.string().trim().min(1),
   textColor: hexColor,
   backgroundColor: hexColor,
+  // The headline's accent word and the caption word being said. Presets
+  // written before it existed get the default.
+  accentColor: hexColor.default("#facc15"),
   wordsPerChunk: z.number().int().min(1).max(8),
   maxChunkCharacters: z.number().int().min(4),
 });
@@ -26,12 +26,12 @@ const safeZonesSchema = z
     left: pixels,
     right: pixels,
   })
-  .refine((zones) => zones.top + zones.bottom < frame.height, {
-    message: "The top and bottom safe zones must leave part of the frame uncovered.",
+  .refine((zones) => frame.height - zones.top - zones.bottom >= minimumSafeArea.height, {
+    message: `The top and bottom safe zones must leave at least ${minimumSafeArea.height} pixels of height for the headline, the captions and the camera.`,
     path: ["bottom"],
   })
-  .refine((zones) => zones.left + zones.right < frame.width, {
-    message: "The left and right safe zones must leave part of the frame uncovered.",
+  .refine((zones) => frame.width - zones.left - zones.right >= minimumSafeArea.width, {
+    message: `The left and right safe zones must leave at least ${minimumSafeArea.width} pixels of width for the camera.`,
     path: ["right"],
   });
 
@@ -53,6 +53,7 @@ export const defaultPreset: Preset = {
     fontFamily: "Noto Sans",
     textColor: "#ffffff",
     backgroundColor: "#2e1065",
+    accentColor: "#facc15",
     wordsPerChunk: 3,
     maxChunkCharacters: 24,
   },

@@ -1,28 +1,46 @@
+import { captionAt, chunkCaptions, keptWords, type CaptionChunk } from "../../src/edit/captions.ts";
 import { computeKeepRanges, type KeepRange } from "../../src/edit/cut-list.ts";
+import { clampCrop } from "../../src/edit/layout-geometry.ts";
 import {
   keptDurationMs,
   nextPlayableMs,
   screenTimeMs,
   shortTimeMs,
+  wordIndexAt,
 } from "../../src/edit/playback.ts";
 import {
   removedRangesToIndexes,
   toggleRemoved,
   type RemovedWordRanges,
 } from "../../src/edit/removed-words.ts";
+import { applyLayout, layoutAtWord } from "../../src/edit/segments.ts";
+import { isLayout, type Layout } from "../../src/schemas/layout-names.ts";
+import { isSameWord } from "../../src/schemas/headline-words.ts";
+import type { Preset } from "../../src/schemas/preset.ts";
 import type { RecordedTakes } from "../../src/schemas/recorded-takes.ts";
 import type { ShortProject } from "../../src/schemas/short-project.ts";
 import type { Transcript } from "../../src/schemas/transcript.ts";
 import { formatElapsed, formatPrecise } from "../shared/time.ts";
 import { readSessionToken } from "../recorder/take.ts";
+import { accentChoices, createPreview } from "./preview.ts";
 import { nextFocusIndex, selectionBetween } from "./selection.ts";
 
 interface Project {
   recordedTakes: RecordedTakes;
   transcript: Transcript;
   short: ShortProject;
+  preset: Preset;
   media: { cam: string; screen: string };
 }
+
+type Headline = NonNullable<ShortProject["headline"]>;
+type ScreenCrop = NonNullable<ShortProject["screenCrop"]>;
+
+const layoutNames: Record<Layout, string> = {
+  split: "Split",
+  face: "Face",
+  circle: "Circle cam",
+};
 
 // YouTube treats vertical videos of up to three minutes as Shorts.
 const shortsLimitMs = 180_000;
@@ -52,6 +70,19 @@ const trimEndValue = requireElement("trim-end-value", HTMLSpanElement);
 const lengthText = requireElement("length", HTMLParagraphElement);
 const doneButton = requireElement("done-button", HTMLButtonElement);
 const status = requireElement("status", HTMLOutputElement);
+const layoutChoice = requireElement("layout-choice", HTMLFieldSetElement);
+const headlineInput = requireElement("headline-text", HTMLInputElement);
+const accentSelect = requireElement("headline-accent", HTMLSelectElement);
+const cropFieldset = requireElement("screen-crop", HTMLFieldSetElement);
+const cropInputs = {
+  x: requireElement("crop-x", HTMLInputElement),
+  y: requireElement("crop-y", HTMLInputElement),
+  width: requireElement("crop-width", HTMLInputElement),
+  height: requireElement("crop-height", HTMLInputElement),
+};
+const cropResetButton = requireElement("crop-reset", HTMLButtonElement);
+const safeZonesToggle = requireElement("safe-zones-toggle", HTMLInputElement);
+const headlineHelp = requireElement("headline-help", HTMLParagraphElement);
 
 const token = readSessionToken(window.location.hash);
 
@@ -67,6 +98,14 @@ let saveTimer: number | undefined;
 // Resolves to whether the latest save reached short.json.
 let pendingSave: Promise<boolean> = Promise.resolve(true);
 let isPlaying = false;
+let segments: ShortProject["segments"] = [];
+let headline: Headline | undefined;
+let screenCrop: ScreenCrop | undefined;
+// The accent word picked in the list. Until one is picked, or while the
+// picked word is missing from the headline, the last word is the accent.
+let chosenAccent: string | undefined;
+let captionChunks: CaptionChunk[] = [];
+let preview: ReturnType<typeof createPreview> | undefined;
 
 function announce(message: string) {
   status.textContent = message;
@@ -98,6 +137,11 @@ function updateKeepRanges() {
     removedWords,
     pauseThresholdMs: short.pauseThresholdMs,
   });
+  captionChunks = chunkCaptions(
+    keptWords(transcript.words, keepRanges),
+    currentProject().preset.captions,
+    keepRanges,
+  );
   const lengthMs = keptDurationMs(keepRanges);
   const limit = lengthMs > shortsLimitMs ? " That is longer than the 3:00 a Short can be." : "";
   lengthText.textContent = `The short is ${formatElapsed(lengthMs)} long. Shorts can be up to 3:00.${limit}`;
@@ -106,6 +150,7 @@ function updateKeepRanges() {
 function updateWords() {
   const removed = removedRangesToIndexes(removedWords);
   const { words } = currentProject().transcript;
+  const segmentStarts = new Map(segments.map((segment) => [segment.fromWord, segment.layout]));
   wordOptions.forEach((option, index) => {
     const word = words[index]!;
     const isCut = removed.has(index);
@@ -115,11 +160,48 @@ function updateWords() {
     option.classList.toggle("is-outside-trim", isOutsideTrim && !isCut);
     option.tabIndex = index === focusIndex ? 0 : -1;
 
-    // The visible line-through and dimming are repeated as text for screen readers.
-    // Browsers put a space before the hidden note, so it reads as a parenthetical.
+    // The visible line-through, dimming and layout marker are repeated as text
+    // for screen readers. Browsers put a space before the hidden note, so it
+    // reads as a parenthetical. The first segment always starts at word 0, so
+    // only the later ones are worth a mention.
+    const startingLayout = index > 0 ? segmentStarts.get(index) : undefined;
+    option.classList.toggle("starts-layout", startingLayout !== undefined);
     const note = option.querySelector(".visually-hidden")!;
-    note.textContent = isCut ? "(cut)" : isOutsideTrim ? "(outside the trim)" : "";
+    note.textContent = describeWordState({ isCut, isOutsideTrim, startingLayout });
   });
+  syncLayoutChoice();
+}
+
+/** The hidden note for a word, such as "(cut, face layout starts)", or nothing. */
+function describeWordState(state: {
+  isCut: boolean;
+  isOutsideTrim: boolean;
+  startingLayout: Layout | undefined;
+}): string {
+  const notes: string[] = [];
+  if (state.isCut) {
+    notes.push("cut");
+  } else if (state.isOutsideTrim) {
+    notes.push("outside the trim");
+  }
+  if (state.startingLayout !== undefined) {
+    notes.push(`${layoutNames[state.startingLayout].toLowerCase()} layout starts`);
+  }
+  return notes.length > 0 ? `(${notes.join(", ")})` : "";
+}
+
+/**
+ * Checks the radio button for the layout of the selected words. When they
+ * use more than one layout, no radio button is checked, so any layout can
+ * be chosen for all of them.
+ */
+function syncLayoutChoice() {
+  const target = selection.length > 0 ? selection : [focusIndex];
+  const layouts = new Set(target.map((index) => layoutAtWord(segments, index)));
+  const sharedLayout = layouts.size === 1 ? [...layouts][0] : undefined;
+  for (const radio of layoutChoice.querySelectorAll<HTMLInputElement>('input[name="layout"]')) {
+    radio.checked = radio.value === sharedLayout;
+  }
 }
 
 function updateTrimInputs() {
@@ -143,7 +225,15 @@ function update() {
 /** Saves the trim and the cuts, and resolves to whether short.json was updated. */
 async function save(): Promise<boolean> {
   try {
-    await api("/short", { method: "PUT", body: JSON.stringify({ trim, removedWords }) });
+    // null tells the server to remove a headline or crop that was cleared.
+    const changes = {
+      trim,
+      removedWords,
+      segments,
+      headline: headline ?? null,
+      screenCrop: screenCrop ?? null,
+    };
+    await api("/short", { method: "PUT", body: JSON.stringify(changes) });
     return true;
   } catch (error) {
     // Only a failure is announced, so the status keeps describing the last edit.
@@ -199,6 +289,165 @@ function showPosition(cameraMs: number) {
       isPlaying && cameraMs >= word.startMs && cameraMs < word.endMs,
     );
   });
+
+  // The layout follows the word being said, or the last word said.
+  preview?.showLayout(layoutAtWord(segments, wordIndexAt(words, cameraMs)), screenCrop);
+  preview?.showCaption(captionAt(captionChunks, cameraMs));
+}
+
+/** The current position of the preview, in camera time. */
+function previewMs(): number {
+  return cameraVideo.currentTime * 1000;
+}
+
+function changeLayout(layout: Layout) {
+  const target = selection.length > 0 ? selection : [focusIndex];
+  const { words } = currentProject().transcript;
+  segments = applyLayout(
+    segments,
+    { fromWord: Math.min(...target), toWord: Math.max(...target) },
+    layout,
+    words.length,
+  );
+  updateWords();
+  showPosition(previewMs());
+  announce(`${layoutNames[layout]} layout for ${describeTarget(target)}.`);
+  scheduleSave();
+}
+
+/**
+ * Fills the accent list with the headline's words and returns the accent:
+ * the chosen word while the headline has it, otherwise the last word.
+ */
+function showAccentChoices(text: string): string | undefined {
+  const choices = accentChoices(text);
+  accentSelect.replaceChildren(...choices.map((word) => new Option(word, word)));
+  accentSelect.disabled = choices.length === 0;
+  const chosen = chosenAccent;
+  const chosenWord =
+    chosen === undefined ? undefined : choices.find((word) => isSameWord(word, chosen));
+  const accent = chosenWord ?? choices.at(-1);
+  if (accent !== undefined) {
+    accentSelect.value = accent;
+  }
+  return accent;
+}
+
+function changeHeadline() {
+  const text = headlineInput.value.trim();
+  const accent = showAccentChoices(text);
+  headline = accent === undefined ? undefined : { text, accent };
+  showHeadline();
+  scheduleSave();
+}
+
+function changeAccent() {
+  if (headline === undefined) {
+    return;
+  }
+  chosenAccent = accentSelect.value;
+  headline = { ...headline, accent: chosenAccent };
+  showHeadline();
+  scheduleSave();
+}
+
+let isHeadlineTooLong = false;
+
+/** Draws the headline in the preview and says whether it fits in its two lines. */
+function showHeadline() {
+  if (preview === undefined) {
+    return;
+  }
+  const fits = preview.showHeadline(headline);
+  headlineHelp.textContent = fits
+    ? "The headline fits in two lines."
+    : "The headline is too long for two lines. Shorten it so all of it shows.";
+  // Announced once, when the headline grows past the space it has.
+  if (!fits && !isHeadlineTooLong) {
+    announce("The headline is too long for two lines.");
+  }
+  isHeadlineTooLong = !fits;
+}
+
+function showCropInputs(crop: ScreenCrop) {
+  for (const field of ["x", "y", "width", "height"] as const) {
+    cropInputs[field].value = String(crop[field]);
+  }
+}
+
+/** The whole shared window, which is what the preview shows without a crop. */
+function fullScreenCrop(): ScreenCrop {
+  return { x: 0, y: 0, width: screenVideo.videoWidth, height: screenVideo.videoHeight };
+}
+
+function isSameCrop(first: ScreenCrop, second: ScreenCrop): boolean {
+  return (
+    first.x === second.x &&
+    first.y === second.y &&
+    first.width === second.width &&
+    first.height === second.height
+  );
+}
+
+/**
+ * Reads the crop fields once a value is committed, keeping the crop inside
+ * the shared window. Waiting for the change event, rather than reacting to
+ * every key, means a half-typed value never rewrites the other fields.
+ */
+function changeCrop() {
+  const typedCrop = {
+    x: readWholeNumber(cropInputs.x, 0),
+    y: readWholeNumber(cropInputs.y, 0),
+    width: readWholeNumber(cropInputs.width, 1),
+    height: readWholeNumber(cropInputs.height, 1),
+  };
+  screenCrop = clampCrop(typedCrop, windowSize());
+  showCropInputs(screenCrop);
+  if (!isSameCrop(typedCrop, screenCrop)) {
+    announce("The crop was changed to stay inside the window.");
+  }
+  showPosition(previewMs());
+  scheduleSave();
+}
+
+/** A field's value as a whole number, or the fallback when the field is empty or invalid. */
+function readWholeNumber(input: HTMLInputElement, fallback: number): number {
+  const value = Number(input.value);
+  const isUsable = input.value.trim() !== "" && Number.isFinite(value);
+  return isUsable ? Math.round(value) : fallback;
+}
+
+function windowSize() {
+  return { width: screenVideo.videoWidth, height: screenVideo.videoHeight };
+}
+
+function resetCrop() {
+  screenCrop = undefined;
+  showCropInputs(fullScreenCrop());
+  showPosition(previewMs());
+  announce("The crop is reset, so the whole window shows.");
+  scheduleSave();
+}
+
+/** The crop fields can only be filled in once the window's size is known. */
+function enableCrop() {
+  const { videoWidth, videoHeight } = screenVideo;
+  cropInputs.x.max = String(videoWidth - 1);
+  cropInputs.y.max = String(videoHeight - 1);
+  cropInputs.width.max = String(videoWidth);
+  cropInputs.height.max = String(videoHeight);
+  // A crop saved for an earlier, larger recording is brought inside this one.
+  if (screenCrop !== undefined) {
+    const fittedCrop = clampCrop(screenCrop, windowSize());
+    if (!isSameCrop(fittedCrop, screenCrop)) {
+      screenCrop = fittedCrop;
+      announce("The saved crop was larger than the window, so it now fits inside it.");
+      scheduleSave();
+    }
+  }
+  showCropInputs(screenCrop ?? fullScreenCrop());
+  showPosition(previewMs());
+  cropFieldset.disabled = false;
 }
 
 function selectWord(index: number, extend: boolean) {
@@ -214,13 +463,22 @@ function selectWord(index: number, extend: boolean) {
   }
 }
 
+/**
+ * Names the words an action applies to: the word itself, a count, or "the
+ * short" when the transcript has no words, as for a silent take.
+ */
+function describeTarget(target: number[]): string {
+  const { words } = currentProject().transcript;
+  const singleWord = target.length === 1 ? words[target[0]!] : undefined;
+  if (singleWord !== undefined) {
+    return singleWord.text;
+  }
+  return words.length === 0 ? "the short" : `${target.length} words`;
+}
+
 /** Describes a cut or a restore for the status, such as "Cut positioning." */
 function describeToggle(target: number[], isNowCut: boolean): string {
-  const action = isNowCut ? "Cut" : "Restored";
-  if (target.length === 1) {
-    return `${action} ${currentProject().transcript.words[target[0]!]!.text}.`;
-  }
-  return `${action} ${target.length} words.`;
+  return `${isNowCut ? "Cut" : "Restored"} ${describeTarget(target)}.`;
 }
 
 function toggleCut() {
@@ -422,6 +680,35 @@ async function initialise() {
 
   removedWords = project.short.removedWords;
   trim = project.short.trim;
+  segments = project.short.segments;
+  headline = project.short.headline;
+  screenCrop = project.short.screenCrop;
+  preview = createPreview(
+    {
+      frame: requireElement("preview-frame", HTMLDivElement),
+      screenSlot: requireElement("screen-slot", HTMLDivElement),
+      cameraSlot: requireElement("camera-slot", HTMLDivElement),
+      screenVideo,
+      cameraVideo,
+      headline: requireElement("headline-preview", HTMLParagraphElement),
+      captions: requireElement("captions-preview", HTMLParagraphElement),
+      safeZones: requireElement("safe-zones", HTMLDivElement),
+    },
+    project.preset,
+  );
+  headlineInput.value = headline?.text ?? "";
+  // A saved accent that is the last word may only be the default, so it is
+  // treated as chosen only when it is another word.
+  const lastHeadlineWord = accentChoices(headline?.text ?? "").at(-1);
+  const isSavedAccentChosen =
+    headline !== undefined &&
+    lastHeadlineWord !== undefined &&
+    !isSameWord(headline.accent, lastHeadlineWord);
+  chosenAccent = isSavedAccentChosen ? headline?.accent : undefined;
+  showAccentChoices(headline?.text ?? "");
+  showHeadline();
+  // The headline's size depends on the font, which may still be loading.
+  void document.fonts.ready.then(showHeadline);
   for (const input of [trimStartInput, trimEndInput]) {
     input.max = String(project.transcript.durationMs);
     input.disabled = false;
@@ -433,6 +720,29 @@ async function initialise() {
   update();
   seekTo(keepRanges[0]?.startMs ?? 0);
 
+  if (screenVideo.readyState >= HTMLMediaElement.HAVE_METADATA) {
+    enableCrop();
+  } else {
+    screenVideo.addEventListener("loadedmetadata", enableCrop, { once: true });
+  }
+  screenVideo.addEventListener("error", () =>
+    announce("The window recording could not be loaded, so the preview cannot show or crop it."),
+  );
+  layoutChoice.addEventListener("change", (event) => {
+    const { value } = event.target as HTMLInputElement;
+    if (isLayout(value)) {
+      changeLayout(value);
+    }
+  });
+  headlineInput.addEventListener("input", changeHeadline);
+  accentSelect.addEventListener("change", changeAccent);
+  for (const input of Object.values(cropInputs)) {
+    input.addEventListener("change", changeCrop);
+  }
+  cropResetButton.addEventListener("click", resetCrop);
+  safeZonesToggle.addEventListener("change", () =>
+    preview?.setSafeZonesVisible(safeZonesToggle.checked),
+  );
   trimStartInput.addEventListener("input", () => changeTrim("start"));
   trimEndInput.addEventListener("input", () => changeTrim("end"));
   playButton.addEventListener("click", () => {
@@ -452,7 +762,9 @@ async function initialise() {
   });
   playButton.disabled = false;
   doneButton.disabled = false;
-  announce("Ready. Select words to cut them, or move the trim handles.");
+  layoutChoice.disabled = false;
+  headlineInput.disabled = false;
+  announce("Ready. Select words to cut them or change their layout, or move the trim handles.");
 }
 
 void initialise();

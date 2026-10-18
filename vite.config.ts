@@ -37,6 +37,17 @@ export default defineConfig({
         { from: "web/editor/editor.css", to: "dist-web/editor" },
         { from: "web/shared/base.css", to: "dist-web/shared" },
         { from: "web/shared/layouts.css", to: "dist-web/shared" },
+        { from: "web/shared/overlays.css", to: "dist-web/shared" },
+        // Noto Sans is bundled so the preview and the render use the same
+        // font on every machine. The OFL asks for its license to travel with it.
+        {
+          from: "node_modules/@fontsource/noto-sans/files/noto-sans-latin-700-normal.woff2",
+          to: "dist-web/shared/fonts",
+        },
+        {
+          from: "node_modules/@fontsource/noto-sans/LICENSE",
+          to: "dist-web/shared/fonts",
+        },
       ],
     },
   ],

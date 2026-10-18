@@ -22,6 +22,10 @@ The model is `~/.cache/shorty-pants/models/ggml-small.en.bin` unless `--model` o
 
 `short edit <short folder>` opens the editor in your browser. The transcript is shown as words: select words and press Delete to cut them, and press Delete again to bring them back. The trim handles set where the short starts and ends, and pauses longer than the threshold in the preset are cut on their own. The preview plays the short with every cut applied, and each change is saved to `short.json` as you go. Press Done in the editor, or Ctrl+C in the terminal, when you are finished. Pass `--no-open` to print the editor address without opening a browser.
 
+The editor also dresses the short. Select words and choose a layout for them: split puts the shared window above the camera, face shows only the camera, and circle cam puts the camera in a circle over the window. Type a headline and pick its accent word, and crop the shared window if only part of it matters. The preview shows the captions as they will appear, a few words at a time with the current word lit, and Show safe zones dims the parts of the frame that YouTube's own buttons and text cover.
+
+The caption style, the default layout, the pause threshold and the safe zones come from `preset.json` in the shorts root. Without one, the defaults are Noto Sans in white on dark purple, with yellow for the accent.
+
 ## Development
 
 The project uses [Vite+](https://viteplus.dev/) with pnpm and requires Node 24.11 or newer.

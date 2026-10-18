@@ -1,11 +1,12 @@
 import { randomBytes } from "node:crypto";
 import { existsSync } from "node:fs";
-import { readFile, rename, rm, stat, writeFile } from "node:fs/promises";
-import { join } from "node:path";
+import { rename, rm, stat, writeFile } from "node:fs/promises";
+import { dirname, join } from "node:path";
 import { CommandNotFoundError, type CommandRunner } from "../commands.ts";
 import { createShortProject } from "../edit/short-project-defaults.ts";
 import { ShortError } from "../errors.ts";
-import { defaultPreset } from "../schemas/preset.ts";
+import { readValidatedJson } from "../json-file.ts";
+import { readPreset } from "../preset-file.ts";
 import { parseRecordedTakes } from "../schemas/recorded-takes.ts";
 import { parseShortProject, type ShortProject } from "../schemas/short-project.ts";
 import { parseTranscript, type Transcript } from "../schemas/transcript.ts";
@@ -23,29 +24,6 @@ export interface EditShortOptions {
 export type EditShortResult =
   | { outcome: "done"; short: ShortProject; transcript: Transcript }
   | { outcome: "cancelled" };
-
-async function readValidated<T>(
-  path: string,
-  missingMessage: string,
-  parse: (input: unknown) => { success: true; data: T } | { success: false; error: Error },
-): Promise<T> {
-  if (!existsSync(path)) {
-    throw new ShortError(missingMessage);
-  }
-  let input: unknown;
-  try {
-    input = JSON.parse(await readFile(path, "utf8"));
-  } catch (error) {
-    throw new ShortError(
-      `${path} is not valid JSON. ${error instanceof Error ? error.message : ""}`,
-    );
-  }
-  const result = parse(input);
-  if (!result.success) {
-    throw new ShortError(`${path} is not valid. ${result.error.message}`);
-  }
-  return result.data;
-}
 
 async function isUpToDate(preview: string, source: string): Promise<boolean> {
   if (!existsSync(preview)) {
@@ -109,12 +87,12 @@ export async function editShort(options: EditShortOptions): Promise<EditShortRes
     );
   }
 
-  const recordedTakes = await readValidated(
+  const recordedTakes = await readValidatedJson(
     join(shortFolder, "takes.json"),
     `No recorded take in ${shortFolder}. Record one with short record.`,
     parseRecordedTakes,
   );
-  const transcript = await readValidated(
+  const transcript = await readValidatedJson(
     join(shortFolder, "transcript.json"),
     `${shortFolder} has no transcript yet. Run short transcribe "${shortFolder}" first.`,
     parseTranscript,
@@ -129,22 +107,31 @@ export async function editShort(options: EditShortOptions): Promise<EditShortRes
     options.run,
   );
 
+  // Each short folder sits in the shorts root, which holds the preset.
+  const preset = await readPreset(dirname(shortFolder));
   const shortPath = join(shortFolder, "short.json");
   if (existsSync(shortPath)) {
     // short transcribe --force replaces the transcript and keeps short.json,
     // whose cuts and trim may refer to words and times that no longer exist.
     // The editor could not save such a file, so it is refused up front.
-    const existing = await readValidated(shortPath, `${shortPath} is missing.`, parseShortProject);
+    const existing = await readValidatedJson(
+      shortPath,
+      `${shortPath} is missing.`,
+      parseShortProject,
+    );
     const lastWordIndex = transcript.words.length - 1;
     const hasCutsPastLastWord = existing.removedWords.some(([, toWord]) => toWord > lastWordIndex);
     const hasTrimPastRecording = existing.trim.endMs > transcript.durationMs;
-    if (hasCutsPastLastWord || hasTrimPastRecording) {
+    const hasSegmentPastLastWord = existing.segments.some(
+      (segment) => segment.fromWord > Math.max(lastWordIndex, 0),
+    );
+    if (hasCutsPastLastWord || hasTrimPastRecording || hasSegmentPastLastWord) {
       throw new ShortError(
         `${shortPath} does not match transcript.json, which has changed since the edits were made. Remove short.json to start editing again.`,
       );
     }
   } else {
-    const short = createShortProject({ recordedTakes, transcript, preset: defaultPreset });
+    const short = createShortProject({ recordedTakes, transcript, preset });
     await writeFile(shortPath, `${JSON.stringify(short, null, 2)}\n`);
   }
 
@@ -152,6 +139,7 @@ export async function editShort(options: EditShortOptions): Promise<EditShortRes
     shortFolder,
     webRoot: options.webRoot,
     token: randomBytes(24).toString("base64url"),
+    preset,
   });
   const cancelled = new Promise<"cancelled">((resolveCancelled) => {
     if (options.signal?.aborted) {
@@ -166,7 +154,7 @@ export async function editShort(options: EditShortOptions): Promise<EditShortRes
     if (outcome === "cancelled") {
       return { outcome };
     }
-    const short = await readValidated(shortPath, `${shortPath} is missing.`, parseShortProject);
+    const short = await readValidatedJson(shortPath, `${shortPath} is missing.`, parseShortProject);
     return { outcome, short, transcript };
   } finally {
     await server.close();

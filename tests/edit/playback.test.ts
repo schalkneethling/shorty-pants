@@ -1,5 +1,6 @@
 import { describe, expect, test } from "vite-plus/test";
 import {
+  wordIndexAt,
   keptDurationMs,
   nextPlayableMs,
   screenTimeMs,
@@ -57,5 +58,21 @@ describe("screenTimeMs", () => {
 
   test("never goes before the start of the screen recording", () => {
     expect(screenTimeMs(10, 42)).toBe(0);
+  });
+});
+
+describe("wordIndexAt", () => {
+  const words = [
+    { text: "one", startMs: 100, endMs: 400 },
+    { text: "two", startMs: 500, endMs: 900 },
+  ];
+
+  test("finds the word being said", () => {
+    expect(wordIndexAt(words, 600)).toBe(1);
+  });
+
+  test("keeps the last word said between words, and the first word before any", () => {
+    expect(wordIndexAt(words, 450)).toBe(0);
+    expect(wordIndexAt(words, 0)).toBe(0);
   });
 });
