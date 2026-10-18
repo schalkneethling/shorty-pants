@@ -76,8 +76,12 @@ jobs:
       - name: Smoke test the package
         run: |
           tarball="$(find "$PACKAGE_DIR" -type f -name '*.tgz' -print -quit)"
+          # The listing goes to a file first: grep -q stops reading at the first
+          # match, which would end tar with SIGPIPE under pipefail.
+          contents="${RUNNER_TEMP}/npm-package-contents.txt"
+          tar -tzf "$tarball" > "$contents"
           for page in recorder editor render; do
-            if ! tar -tzf "$tarball" | grep -qx "package/dist-web/${page}/index.html"; then
+            if ! grep -qx "package/dist-web/${page}/index.html" "$contents"; then
               echo "::error::The package is missing dist-web/${page}/index.html."
               exit 1
             fi
@@ -96,7 +100,8 @@ jobs:
           name: npm-package
           path: ${{ runner.temp }}/npm-package-${{ github.run_id }}-${{ github.run_attempt }}/*.tgz
           if-no-files-found: error
-          retention-days: 7
+          # As long as an approval in the publish environment can wait.
+          retention-days: 30
 
   publish:
     name: Publish to npm

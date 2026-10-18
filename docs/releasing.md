@@ -48,10 +48,10 @@ On the same page, choose **Require two-factor authentication and disallow tokens
 
 ## Every release after the first
 
-1. Raise `version` in `package.json` in a pull request, and merge it once CI is green. A version with a prerelease part, such as `0.2.0-beta.1`, is published under the `next` dist-tag, so `npm install` keeps giving people the latest stable version.
+1. Raise `version` in `package.json` in a pull request, and merge it once CI is green. A stable version has to be higher than the latest one on npm, because publishing a lower one would move the `latest` dist-tag back. A version with a prerelease part, such as `0.2.0-beta.1`, is published under the `next` dist-tag, so `npm install` keeps giving people the latest stable version.
 2. In the **Actions** tab, choose **Publish**, then **Run workflow** on `main`.
 3. The workflow runs the same checks as every pull request. It then checks that the version is new to npm and has no tag yet, builds and packs the package, installs the packed file, and runs `short --help` from it.
-4. The publish job waits for approval in the `publish` environment. Approve it to publish the packed file to npm.
+4. The publish job waits for approval in the `publish` environment. Approve it within 30 days, while the packed file is kept, to publish it to npm.
 5. After npm accepts the version, the workflow creates the `v<version>` tag and a GitHub release with generated notes.
 
 If the release job fails after npm has accepted the version, re-run only that job. Running the whole workflow again stops at the version check, because npm already has that version.

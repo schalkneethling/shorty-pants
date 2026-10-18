@@ -18,11 +18,41 @@ export type ReleasePlan =
 
 const releaseRef = "refs/heads/main";
 
+// One part of a prerelease, such as beta or 1 in -beta.1. Semver forbids
+// leading zeros in a numeric part, so 01 is refused while 0a is allowed.
+const prereleasePart = String.raw`(0|[1-9]\d*|\d*[A-Za-z-][0-9A-Za-z-]*)`;
+
 // major.minor.patch with an optional prerelease such as -beta.1. Build
 // metadata (+build.5) is refused, because npm ignores it when comparing
 // versions, so 1.0.0+a and 1.0.0+b would be the same release.
-const releasableVersion =
-  /^(0|[1-9]\d*)\.(0|[1-9]\d*)\.(0|[1-9]\d*)(-[0-9A-Za-z-]+(\.[0-9A-Za-z-]+)*)?$/;
+const releasableVersion = new RegExp(
+  String.raw`^(0|[1-9]\d*)\.(0|[1-9]\d*)\.(0|[1-9]\d*)(-${prereleasePart}(\.${prereleasePart})*)?$`,
+);
+
+function isPrerelease(version: string): boolean {
+  return version.includes("-");
+}
+
+/** Orders two stable major.minor.patch versions by their numbers. */
+function compareStableVersions(left: string, right: string): number {
+  const leftParts = left.split(".").map(Number);
+  const rightParts = right.split(".").map(Number);
+  for (const [index, leftPart] of leftParts.entries()) {
+    const difference = leftPart - rightParts[index]!;
+    if (difference !== 0) {
+      return difference;
+    }
+  }
+  return 0;
+}
+
+/** The highest stable version, which npm's latest dist-tag points to. */
+function latestStableVersion(versions: string[]): string | undefined {
+  return versions
+    .filter((version) => !isPrerelease(version))
+    .toSorted(compareStableVersions)
+    .at(-1);
+}
 
 /** Decides whether a version can be released, and under which npm dist-tag. */
 export function planRelease(candidate: ReleaseCandidate): ReleasePlan {
@@ -54,13 +84,49 @@ export function planRelease(candidate: ReleaseCandidate): ReleasePlan {
     problems.push(`The tag ${tag} already exists. Raise the version in package.json first.`);
   }
 
+  // npm can only trust this workflow once the package exists, so the first
+  // version would fail at the publish step, after the approval.
+  const isUnpublished = publishedVersions.length === 0;
+  if (isUnpublished) {
+    problems.push(
+      "npm has no version of this package yet. Publish the first release by hand, as docs/releasing.md describes, then turn on trusted publishing.",
+    );
+  }
+
+  // npm only guards against moving latest backwards when the dist-tag is
+  // implicit, and this workflow always passes one.
+  const latest = latestStableVersion(publishedVersions);
+  const wouldMoveLatestBack =
+    isWellFormed &&
+    !isPrerelease(version) &&
+    latest !== undefined &&
+    !isAlreadyPublished &&
+    compareStableVersions(version, latest) < 0;
+  if (wouldMoveLatestBack) {
+    problems.push(
+      `${version} is lower than ${latest}, the latest version on npm, so publishing it would move the latest dist-tag back.`,
+    );
+  }
+
   if (problems.length > 0) {
     return { ok: false, problems };
   }
   // npm 11 refuses to publish a prerelease without a dist-tag, so that it
   // never becomes the version people get from a plain install.
-  const isPrerelease = version.includes("-");
-  return { ok: true, tag, distTag: isPrerelease ? "next" : "latest" };
+  return { ok: true, tag, distTag: isPrerelease(version) ? "next" : "latest" };
+}
+
+/** Reads the output of npm view <package> versions --json. */
+export function publishedVersionsFrom(output: string): string[] {
+  const versions: unknown = JSON.parse(output);
+  // npm prints a single string when only one version exists.
+  return Array.isArray(versions) ? versions.map(String) : [String(versions)];
+}
+
+/** Whether a list of matching refs from the GitHub API holds this exact tag. */
+export function hasExactTag(refs: { ref: string }[], tag: string): boolean {
+  // matching-refs matches by prefix, so v0.2.0 also finds v0.2.0-beta.1.
+  return refs.some((ref) => ref.ref === `refs/tags/${tag}`);
 }
 
 function run(command: string, args: string[]): string {
@@ -76,9 +142,7 @@ function run(command: string, args: string[]): string {
 /** Every version of the package on npm, or none before its first release. */
 function readPublishedVersions(packageName: string): string[] {
   try {
-    const versions: unknown = JSON.parse(run("npm", ["view", packageName, "versions", "--json"]));
-    // npm prints a single string when only one version exists.
-    return Array.isArray(versions) ? versions.map(String) : [String(versions)];
+    return publishedVersionsFrom(run("npm", ["view", packageName, "versions", "--json"]));
   } catch (error) {
     // With encoding set, execFileSync attaches the output as a string.
     const output = (error as { stdout?: string }).stdout ?? "";
@@ -92,12 +156,11 @@ function readPublishedVersions(packageName: string): string[] {
 
 /** Whether the repository already has this exact tag. */
 function readTagExists(repository: string, tag: string): boolean {
-  // matching-refs answers with an empty list instead of a 404, and matches by
-  // prefix, so v0.2.0 also finds v0.2.0-beta.1 and needs the exact check.
+  // matching-refs answers with an empty list instead of a 404.
   const refs: { ref: string }[] = JSON.parse(
     run("gh", ["api", `repos/${repository}/git/matching-refs/tags/${tag}`]),
   );
-  return refs.some((ref) => ref.ref === `refs/tags/${tag}`);
+  return hasExactTag(refs, tag);
 }
 
 function requireEnvironment(name: string): string {
