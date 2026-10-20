@@ -5,6 +5,7 @@ import {
   layoutGeometry,
   minimumSafeArea,
   safeArea,
+  visibleSource,
   type Rect,
 } from "../../src/edit/layout-geometry.ts";
 import { defaultPreset, frame } from "../../src/schemas/preset.ts";
@@ -166,5 +167,66 @@ describe("coverPlacement", () => {
     expect(placement.x).toBeLessThanOrEqual(0);
     expect(placement.x + placement.width).toBeGreaterThanOrEqual(slot.width);
     expect(placement.y + placement.height).toBeGreaterThanOrEqual(slot.height);
+  });
+});
+
+const defaultFullFrame: Rect = { x: 0, y: 0, width: frame.width, height: frame.height };
+
+describe("visibleSource", () => {
+  const splitScreen = layoutGeometry("split", defaultPreset.safeZones).screen!;
+  const circleScreen = layoutGeometry("circle", defaultPreset.safeZones).screen!;
+
+  function whole(source: { width: number; height: number }): Rect {
+    return { x: 0, y: 0, ...source };
+  }
+
+  test("shows the middle of a 16:9 window in the split layout, and all of its height", () => {
+    const source = { width: 1920, height: 1080 };
+    const visible = visibleSource(source, whole(source), splitScreen);
+    expect(visible.width).toBeCloseTo(1104.5, 1);
+    expect(visible.height).toBeCloseTo(1080);
+    expect(visible.x).toBeCloseTo((1920 - 1104.5) / 2, 1);
+    expect(visible.y).toBeCloseTo(0);
+  });
+
+  test("shows less of the same window in the circle layout, which fills the frame", () => {
+    const source = { width: 1920, height: 1080 };
+    const visible = visibleSource(source, whole(source), circleScreen);
+    expect(visible.width).toBeCloseTo(607.5, 1);
+    expect(visible.height).toBeCloseTo(1080);
+  });
+
+  test("shows all of the width of a square window in the split layout, and cuts its height", () => {
+    const source = { width: 1000, height: 1000 };
+    const visible = visibleSource(source, whole(source), splitScreen);
+    expect(visible.width).toBeCloseTo(1000);
+    expect(visible.height).toBeCloseTo(977.8, 1);
+  });
+
+  test("shows the crop, not the whole window, when there is a crop", () => {
+    const source = { width: 1920, height: 1080 };
+    const crop = { x: 100, y: 100, width: 540, height: 960 };
+    const visible = visibleSource(source, crop, defaultFullFrame);
+    expect(visible.x).toBeCloseTo(100);
+    expect(visible.y).toBeCloseTo(100);
+    expect(visible.width).toBeCloseTo(540);
+    expect(visible.height).toBeCloseTo(960);
+  });
+
+  test("always lies inside the source", () => {
+    const sources = [
+      { width: 1920, height: 1080 },
+      { width: 1000, height: 1000 },
+      { width: 640, height: 480 },
+      { width: 400, height: 1200 },
+      { width: 3456, height: 2234 },
+    ];
+    const slots = [splitScreen, circleScreen];
+    for (const source of sources) {
+      for (const slot of slots) {
+        const visible = visibleSource(source, whole(source), slot);
+        expect(isInside(visible, { x: 0, y: 0, ...source })).toBe(true);
+      }
+    }
   });
 });
