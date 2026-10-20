@@ -18,10 +18,10 @@
   </head>
   <body>
     <main>
-      <h1>Record a short</h1>
-
       <div class="studio">
         <div class="studio-controls">
+          <h1>Record a short</h1>
+
           <section class="beats" aria-labelledby="beats-heading">
             <h2 id="beats-heading">Three beats</h2>
             <ol>
@@ -43,6 +43,7 @@
 
             <p class="elapsed">Recorded <time id="elapsed" datetime="PT0S">0:00</time> of 3:00</p>
             <p><output id="status">Turn on the camera and choose a window to share.</output></p>
+            <p id="preview-unavailable" hidden></p>
           </section>
 
           <section id="preview-controls" class="preview-controls" aria-labelledby="preview-heading" hidden>
@@ -94,8 +95,8 @@
               </p>
             </fieldset>
 
-            <!-- Not a live region: it changes with every resize of the window, and it is read on request. -->
-            <p><output id="screen-fit" role="none">Choose a window to see how much of it the short shows.</output></p>
+            <!-- Not a live region: it changes with every resize of the shared window. -->
+            <p id="screen-fit">Choose a window to see how much of it the short shows.</p>
           </section>
         </div>
 

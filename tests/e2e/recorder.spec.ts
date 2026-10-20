@@ -523,6 +523,9 @@ test.describe("the frame preview", () => {
     await expect(page.getByRole("group", { name: "Preview layout" })).toBeHidden();
 
     await page.getByRole("button", { name: "Turn on camera" }).click();
+    // Later status messages replace the announcement, so the page keeps saying it.
+    await expect(page.getByRole("status")).toContainText("Camera is on");
+    await expect(page.getByText("The frame preview is not available.")).toBeVisible();
     await page.getByRole("button", { name: "Choose window" }).click();
     await page.getByRole("button", { name: "Start recording" }).click();
     await expect(page.locator("#elapsed")).toHaveText("0:01", { timeout: 10_000 });

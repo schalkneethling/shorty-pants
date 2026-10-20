@@ -50,7 +50,8 @@ const layoutChoice = requireElement("preview-layout", HTMLFieldSetElement);
 const viewSizeChoice = requireElement("view-size", HTMLFieldSetElement);
 const safeZonesToggle = requireElement("safe-zones-toggle", HTMLInputElement);
 const areasToggle = requireElement("areas-toggle", HTMLInputElement);
-const screenFit = requireElement("screen-fit", HTMLOutputElement);
+const screenFit = requireElement("screen-fit", HTMLParagraphElement);
+const previewUnavailable = requireElement("preview-unavailable", HTMLParagraphElement);
 const headlineArea = requireElement("headline-area", HTMLElement);
 const captionsArea = requireElement("captions-area", HTMLElement);
 
@@ -164,7 +165,11 @@ async function startFramePreview() {
   try {
     preset = await loadPreset();
   } catch (error) {
-    announce(`The frame preview is not available. ${describeError(error)} You can still record.`);
+    const message = `The frame preview is not available. ${describeError(error)} You can still record.`;
+    announce(message);
+    // The status line moves on with the next step, so the page keeps saying it here.
+    previewUnavailable.textContent = message;
+    previewUnavailable.hidden = false;
     return;
   }
 

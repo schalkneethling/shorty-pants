@@ -76,8 +76,9 @@
 
 /* The scroll area is as wide as its column. A view wider than that scrolls. */
 .frame-scroll {
-  /* Fit: the whole frame, 9:16, as tall as the window leaves room for. */
-  --frame-view-inline-size: calc((100dvb - var(--space) * 2) * 9 / 16);
+  /* Fit: the whole frame, 9:16, as tall as the window leaves room for once
+     the page padding and the caption line below the frame are taken off. */
+  --frame-view-inline-size: calc((100dvb - var(--space) * 2.5 - 1.5rem) * 9 / 16);
 
   overflow: auto;
 }
