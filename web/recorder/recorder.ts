@@ -1,4 +1,8 @@
+import { isLayout, type Layout } from "../../src/schemas/layout-names.ts";
+import type { Preset } from "../../src/schemas/preset.ts";
+import { createLayoutFrame } from "../shared/layout-frame.ts";
 import { formatElapsed } from "../shared/time.ts";
+import { describeScreenFit, layoutLabel } from "./screen-fit.ts";
 import {
   cameraMimeTypes,
   maximumTakeMs,
@@ -37,6 +41,18 @@ const recordButton = requireElement("record-button", HTMLButtonElement);
 const stopButton = requireElement("stop-button", HTMLButtonElement);
 const elapsed = requireElement("elapsed", HTMLTimeElement);
 const status = requireElement("status", HTMLOutputElement);
+const previewControls = requireElement("preview-controls", HTMLElement);
+const framePreview = requireElement("frame-preview", HTMLElement);
+const previewFrame = requireElement("preview-frame", HTMLDivElement);
+const frameScroll = requireElement("frame-scroll", HTMLElement);
+const frameCaption = requireElement("frame-caption", HTMLElement);
+const layoutChoice = requireElement("preview-layout", HTMLFieldSetElement);
+const viewSizeChoice = requireElement("view-size", HTMLFieldSetElement);
+const safeZonesToggle = requireElement("safe-zones-toggle", HTMLInputElement);
+const areasToggle = requireElement("areas-toggle", HTMLInputElement);
+const screenFit = requireElement("screen-fit", HTMLOutputElement);
+const headlineArea = requireElement("headline-area", HTMLElement);
+const captionsArea = requireElement("captions-area", HTMLElement);
 
 const token = readSessionToken(window.location.hash);
 const cameraMimeType = pickMimeType(cameraMimeTypes, (type) => MediaRecorder.isTypeSupported(type));
@@ -44,11 +60,25 @@ const screenMimeType = pickMimeType(screenMimeTypes, (type) => MediaRecorder.isT
 
 const trackNames: Record<Track, string> = { cam: "camera", screen: "screen" };
 
+// How big the frame preview is drawn. Fit fills the height of the window,
+// phone is about the width of a phone held upright, and actual shows one
+// pixel of the short for each pixel on the screen.
+type ViewSize = "fit" | "phone" | "actual";
+
+function isViewSize(value: string): value is ViewSize {
+  return value === "fit" || value === "phone" || value === "actual";
+}
+
 let phase: Phase = "setup";
 let cameraStream: MediaStream | null = null;
 let screenStream: MediaStream | null = null;
 let recordings: Record<Track, TrackRecording> | null = null;
 let timer: number | undefined;
+// The preset arrives from the server after the page has loaded. Until then,
+// and when it cannot be loaded, there is no frame preview.
+let preset: Preset | null = null;
+let layoutFrame: ReturnType<typeof createLayoutFrame> | null = null;
+let previewLayout: Layout = "split";
 
 function announce(message: string) {
   status.textContent = message;
@@ -82,6 +112,90 @@ function focusNextStep() {
     return !button.disabled;
   });
   nextStep?.focus();
+}
+
+/** Says how much of the shared window the short shows in the preview layout. */
+function updateScreenFit() {
+  if (preset === null) {
+    return;
+  }
+  const { videoWidth, videoHeight } = screenPreview;
+  const hasWindow = screenStream !== null && videoWidth > 0 && videoHeight > 0;
+  screenFit.textContent = hasWindow
+    ? describeScreenFit({ width: videoWidth, height: videoHeight }, previewLayout, preset.safeZones)
+    : "Choose a window to see how much of it the short shows.";
+}
+
+/** Switches the layout of the preview only. The recording does not change. */
+function showPreviewLayout(layout: Layout) {
+  previewLayout = layout;
+  layoutFrame?.showLayout(layout, undefined);
+  frameCaption.textContent = `Layout: ${layoutLabel(layout)}`;
+  updateScreenFit();
+}
+
+/** A view wider than its area scrolls, and a keyboard needs a way to scroll it. */
+function updateScrollFocus() {
+  const isScrollable =
+    frameScroll.scrollWidth > frameScroll.clientWidth ||
+    frameScroll.scrollHeight > frameScroll.clientHeight;
+  if (isScrollable) {
+    frameScroll.setAttribute("tabindex", "0");
+  } else {
+    frameScroll.removeAttribute("tabindex");
+  }
+}
+
+function showViewSize(view: ViewSize) {
+  frameScroll.dataset.view = view;
+  updateScrollFocus();
+}
+
+async function loadPreset(): Promise<Preset> {
+  const response = await fetch("/api/preset", { headers: { authorization: `Bearer ${token}` } });
+  if (!response.ok) {
+    throw new Error(`The server answered ${response.status}.`);
+  }
+  return (await response.json()) as Preset;
+}
+
+/** Shows the frame preview once the preset is known. Recording does not need it. */
+async function startFramePreview() {
+  try {
+    preset = await loadPreset();
+  } catch (error) {
+    announce(`The frame preview is not available. ${describeError(error)} You can still record.`);
+    return;
+  }
+
+  layoutFrame = createLayoutFrame(
+    {
+      frame: previewFrame,
+      screenSlot: requireElement("screen-slot", HTMLDivElement),
+      cameraSlot: requireElement("camera-slot", HTMLDivElement),
+      screenVideo: screenPreview,
+      cameraVideo: cameraPreview,
+      headline: headlineArea,
+      captions: captionsArea,
+      safeZones: requireElement("safe-zones", HTMLDivElement),
+    },
+    preset,
+  );
+  layoutChoice.querySelectorAll("input").forEach((input) => {
+    input.checked = input.value === preset?.defaultLayout;
+  });
+  showPreviewLayout(preset.defaultLayout);
+  layoutFrame.setSafeZonesVisible(safeZonesToggle.checked);
+  showAreas(areasToggle.checked);
+
+  previewControls.hidden = false;
+  framePreview.hidden = false;
+  updateScrollFocus();
+}
+
+function showAreas(isVisible: boolean) {
+  headlineArea.hidden = !isVisible;
+  captionsArea.hidden = !isVisible;
 }
 
 function stopStream(stream: MediaStream | null) {
@@ -125,6 +239,7 @@ function handleShareEnded(endedStream: MediaStream) {
   }
   screenStream = null;
   screenPreview.srcObject = null;
+  updateScreenFit();
 
   if (phase === "recording") {
     void stopRecording("Window sharing ended, so the recording stopped. Saving the take.");
@@ -330,6 +445,27 @@ function initialise() {
   }
 
   updateControls();
+  layoutChoice.addEventListener("change", (event) => {
+    const { value } = event.target as HTMLInputElement;
+    if (isLayout(value)) {
+      showPreviewLayout(value);
+    }
+  });
+  viewSizeChoice.addEventListener("change", (event) => {
+    const { value } = event.target as HTMLInputElement;
+    if (isViewSize(value)) {
+      showViewSize(value);
+    }
+  });
+  safeZonesToggle.addEventListener("change", () =>
+    layoutFrame?.setSafeZonesVisible(safeZonesToggle.checked),
+  );
+  areasToggle.addEventListener("change", () => showAreas(areasToggle.checked));
+  // The window can be resized while it is shared, which changes what it shows.
+  screenPreview.addEventListener("loadedmetadata", updateScreenFit);
+  screenPreview.addEventListener("resize", updateScreenFit);
+  new ResizeObserver(updateScrollFocus).observe(frameScroll);
+  void startFramePreview();
   cameraButton.addEventListener("click", () => void turnOnCamera());
   screenButton.addEventListener("click", () => void chooseWindow());
   recordButton.addEventListener("click", startRecording);

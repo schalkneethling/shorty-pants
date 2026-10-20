@@ -8,6 +8,10 @@
     <!-- [html-validate-disable-next require-sri -- served from 127.0.0.1 by the recorder server, not from a CDN] -->
     <link rel="stylesheet" href="../shared/base.css">
     <!-- [html-validate-disable-next require-sri -- served from 127.0.0.1 by the recorder server, not from a CDN] -->
+    <link rel="stylesheet" href="../shared/layouts.css">
+    <!-- [html-validate-disable-next require-sri -- served from 127.0.0.1 by the recorder server, not from a CDN] -->
+    <link rel="stylesheet" href="../shared/overlays.css">
+    <!-- [html-validate-disable-next require-sri -- served from 127.0.0.1 by the recorder server, not from a CDN] -->
     <link rel="stylesheet" href="./recorder.css">
     <!-- [html-validate-disable-next require-sri -- served from 127.0.0.1 by the recorder server, not from a CDN] -->
     <script type="module" src="./recorder.js"></script>
@@ -16,39 +20,112 @@
     <main>
       <h1>Record a short</h1>
 
-      <section class="beats" aria-labelledby="beats-heading">
-        <h2 id="beats-heading">Three beats</h2>
-        <ol>
-          <li>What surprised me</li>
-          <li>Show it</li>
-          <li>Why it happens</li>
-        </ol>
-      </section>
+      <div class="studio">
+        <div class="studio-controls">
+          <section class="beats" aria-labelledby="beats-heading">
+            <h2 id="beats-heading">Three beats</h2>
+            <ol>
+              <li>What surprised me</li>
+              <li>Show it</li>
+              <li>Why it happens</li>
+            </ol>
+          </section>
 
-      <section aria-labelledby="sources-heading">
-        <h2 id="sources-heading">Camera and window</h2>
-        <div class="previews">
-          <figure>
-            <video id="camera-preview" muted playsinline></video>
-            <figcaption>Camera</figcaption>
-          </figure>
-          <figure>
-            <video id="screen-preview" muted playsinline></video>
-            <figcaption>Shared window</figcaption>
-          </figure>
+          <section aria-labelledby="sources-heading">
+            <h2 id="sources-heading">Camera and window</h2>
+
+            <div class="actions">
+              <button type="button" id="camera-button">Turn on camera</button>
+              <button type="button" id="screen-button">Choose window</button>
+              <button type="button" id="record-button" class="primary" disabled>Start recording</button>
+              <button type="button" id="stop-button" disabled>Stop</button>
+            </div>
+
+            <p class="elapsed">Recorded <time id="elapsed" datetime="PT0S">0:00</time> of 3:00</p>
+            <p><output id="status">Turn on the camera and choose a window to share.</output></p>
+          </section>
+
+          <section id="preview-controls" class="preview-controls" aria-labelledby="preview-heading" hidden>
+            <h2 id="preview-heading">Preview of the short</h2>
+
+            <fieldset id="preview-layout" aria-describedby="preview-layout-help">
+              <legend>Preview layout</legend>
+              <p class="radio-field">
+                <input type="radio" id="preview-layout-split" name="preview-layout" value="split" checked>
+                <label for="preview-layout-split">Split</label>
+              </p>
+              <p class="radio-field">
+                <input type="radio" id="preview-layout-face" name="preview-layout" value="face">
+                <label for="preview-layout-face">Face</label>
+              </p>
+              <p class="radio-field">
+                <input type="radio" id="preview-layout-circle" name="preview-layout" value="circle">
+                <label for="preview-layout-circle">Circle cam</label>
+              </p>
+              <p id="preview-layout-help">Changes only this preview. You choose a layout for each part of the short in the editor.</p>
+            </fieldset>
+
+            <fieldset id="view-size" aria-describedby="view-size-help">
+              <legend>View size</legend>
+              <p class="radio-field">
+                <input type="radio" id="view-fit" name="view-size" value="fit" checked>
+                <label for="view-fit">Fit</label>
+              </p>
+              <p class="radio-field">
+                <input type="radio" id="view-phone" name="view-size" value="phone">
+                <label for="view-phone">Phone size</label>
+              </p>
+              <p class="radio-field">
+                <input type="radio" id="view-actual" name="view-size" value="actual">
+                <label for="view-actual">Actual pixels</label>
+              </p>
+              <p id="view-size-help">Fit shows the whole frame in the window. Phone size is 430 pixels wide, close to a phone held upright. Actual pixels shows one pixel of the short for each pixel on your screen.</p>
+            </fieldset>
+
+            <fieldset>
+              <legend>Guides</legend>
+              <p class="checkbox-field">
+                <input type="checkbox" id="safe-zones-toggle" checked>
+                <label for="safe-zones-toggle">Show safe zones</label>
+              </p>
+              <p class="checkbox-field">
+                <input type="checkbox" id="areas-toggle" checked>
+                <label for="areas-toggle">Show headline and caption areas</label>
+              </p>
+            </fieldset>
+
+            <!-- Not a live region: it changes with every resize of the window, and it is read on request. -->
+            <p><output id="screen-fit" role="none">Choose a window to see how much of it the short shows.</output></p>
+          </section>
         </div>
 
-        <div class="actions">
-          <button type="button" id="camera-button">Turn on camera</button>
-          <button type="button" id="screen-button">Choose window</button>
-          <button type="button" id="record-button" class="primary" disabled>Start recording</button>
-          <button type="button" id="stop-button" disabled>Stop</button>
-        </div>
-
-        <p class="elapsed">Recorded <time id="elapsed" datetime="PT0S">0:00</time> of 3:00</p>
-      </section>
-
-      <p><output id="status">Turn on the camera and choose a window to share.</output></p>
+        <figure id="frame-preview" class="frame-preview" hidden>
+          <section id="frame-scroll" class="frame-scroll" data-view="fit" aria-label="Frame preview">
+            <div class="frame-view">
+              <div id="preview-frame" class="frame" data-layout="split">
+                <div id="screen-slot" class="slot">
+                  <video id="screen-preview" muted playsinline></video>
+                </div>
+                <div id="camera-slot" class="slot">
+                  <video id="camera-preview" muted playsinline></video>
+                </div>
+                <!-- The guides repeat what the page says in words, so screen readers skip them. -->
+                <div class="overlays" aria-hidden="true">
+                  <p id="headline-area" class="headline area-guide" data-label="Headline"></p>
+                  <p id="captions-area" class="captions area-guide" data-label="Captions"></p>
+                  <div id="safe-zones" class="safe-zones">
+                    <div class="safe-zone safe-zone-top"></div>
+                    <div class="safe-zone safe-zone-bottom"></div>
+                    <div class="safe-zone safe-zone-left"></div>
+                    <div class="safe-zone safe-zone-right"></div>
+                  </div>
+                </div>
+              </div>
+            </div>
+          </section>
+          <figcaption id="frame-caption">Layout: Split</figcaption>
+        </figure>
+      </div>
     </main>
   </body>
 </html>
