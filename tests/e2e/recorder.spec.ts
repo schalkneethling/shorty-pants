@@ -4,6 +4,7 @@ import { join, resolve } from "node:path";
 import AxeBuilder from "@axe-core/playwright";
 import { expect, test } from "@playwright/test";
 import { startRecorderServer, type RecorderServer } from "../../src/recorder/server.ts";
+import { defaultPreset } from "../../src/schemas/preset.ts";
 
 // The built pages; the test:e2e script builds them before Playwright runs.
 const webRoot = resolve(import.meta.dirname, "..", "..", "dist-web");
@@ -20,6 +21,7 @@ test.beforeEach(async () => {
     webRoot,
     token: "e2e-token-0123456789",
     now: () => new Date("2026-10-17T13:45:00.000Z"),
+    preset: defaultPreset,
   });
 });
 

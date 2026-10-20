@@ -4,6 +4,7 @@ import { mkdir, readdir, stat } from "node:fs/promises";
 import { join } from "node:path";
 import { createDatedId } from "../dated-id.ts";
 import { ShortError } from "../errors.ts";
+import { readPreset } from "../preset-file.ts";
 import type { RecordedTakes } from "../schemas/recorded-takes.ts";
 import { startRecorderServer } from "./server.ts";
 
@@ -44,6 +45,9 @@ export async function recordShort(options: RecordShortOptions): Promise<RecordSh
     );
   }
 
+  // An invalid preset.json fails here, before a folder exists for the short.
+  const preset = await readPreset(options.shortsRoot);
+
   const existingIds = await existingShortIds(options.shortsRoot);
   const id = createDatedId(options.title, options.now(), existingIds, "short");
   const folder = join(options.shortsRoot, id);
@@ -55,6 +59,7 @@ export async function recordShort(options: RecordShortOptions): Promise<RecordSh
     webRoot: options.webRoot,
     token: randomBytes(24).toString("base64url"),
     now: options.now,
+    preset,
   });
   try {
     await mkdir(folder, { recursive: true });
