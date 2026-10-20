@@ -13,6 +13,20 @@ short --help
 
 Transcription and rendering also need the tools described below: whisper.cpp with a model, FFmpeg, and Chrome or Chromium.
 
+## Recording
+
+`short record [title]` creates a folder for the short, serves the recorder on 127.0.0.1 and opens it in your browser. Turn on the camera, choose the window to share, and press Start recording. The camera and the window are saved as two separate tracks. Press Stop, or let the three-minute limit stop the take, and the take is saved.
+
+While you record, the page shows the camera and the window in the 1080 × 1920 frame that the short will have, placed with the same code as the editor and the render. The preview layout starts as the default layout in `preset.json`, which is read when the command starts, so a preset that is not valid stops `short record` before it creates a folder. Without a preset, the defaults apply.
+
+- **Preview layout** switches between split, face and circle cam at any time, even during a take. It changes only the preview. It is not saved, and you still choose a layout for each part of the short in the editor. The recording itself never changes: the camera and the window are recorded as they are.
+- **View size** sets how large the frame is drawn. Fit shows the whole frame in the window. Phone size draws it 430 pixels wide, close to a phone held upright. Actual pixels draws it 1080 pixels wide, one pixel of the short for each pixel on your screen, in an area that scrolls and can be reached with the keyboard.
+- **Guides** show the safe zones from the preset, and the areas where the headline and the captions will go. Both are on by default, and each has a checkbox to hide it.
+
+Below the controls, a sentence says how the window fits the layout. For example, in split, each recorded pixel of the window may become 0.98 pixels of the short, and the short may show the middle 58% of the window's width and all of its height. A window that is wider than the layout is cut at its sides, so text near the edges of a wide window may not appear in the short. The preview shows the whole window, without a crop, as the editor and the render do until you choose a crop in the editor.
+
+The readout has limits. The tool knows the size of the recording in pixels and the scale exactly. It does not know the pixel density of the window you shared: a Retina display is likely, but not confirmed, to be captured in physical pixels, so the scale counts physical pixels rather than the points you see on your screen. It also does not know which phone the viewer holds, how much YouTube compresses the video, or the crop you choose later, and a crop can only make the window larger in the short. Phone size is an approximation of physical size, not a measurement.
+
 ## Transcription
 
 Takes are transcribed locally with [whisper.cpp](https://github.com/ggml-org/whisper.cpp), which needs ffmpeg and a model file. On macOS, both tools come from Homebrew, and the Homebrew build of whisper.cpp uses Metal on Apple silicon.
