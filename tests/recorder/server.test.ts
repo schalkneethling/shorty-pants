@@ -14,6 +14,7 @@ import { join } from "node:path";
 import { afterEach, beforeEach, describe, expect, test } from "vite-plus/test";
 import { startRecorderServer, type RecorderServer } from "../../src/recorder/server.ts";
 import { parseRecordedTakes } from "../../src/schemas/recorded-takes.ts";
+import { defaultPreset, type Preset } from "../../src/schemas/preset.ts";
 
 const token = "test-token-0123456789abcdef";
 // Bytes that are not valid UTF-8, to catch files being read as text.
@@ -83,6 +84,7 @@ beforeEach(async () => {
     webRoot,
     token,
     now: () => new Date("2026-10-17T13:45:00.000Z"),
+    preset: defaultPreset,
     maxUploadBytes: 1024,
   });
 });
@@ -134,6 +136,52 @@ describe("startRecorderServer", () => {
   test("refuses requests for another host name, to block DNS rebinding", async () => {
     const response = await rawRequest("/recorder/", { headers: { host: "evil.example" } });
     expect(response.status).toBe(403);
+  });
+});
+
+describe("the preset", () => {
+  test("is sent to the recorder page", async () => {
+    const response = await rawRequest("/api/preset", {
+      headers: { authorization: `Bearer ${token}` },
+    });
+    expect(response.status).toBe(200);
+    expect(JSON.parse(response.body)).toEqual(defaultPreset);
+  });
+
+  test("is the preset the server was started with", async () => {
+    const circlePreset: Preset = { ...defaultPreset, defaultLayout: "circle" };
+    const circleServer = await startRecorderServer({
+      shortFolder,
+      webRoot: join(workspace, "web"),
+      token,
+      now: () => new Date("2026-10-17T13:45:00.000Z"),
+      preset: circlePreset,
+    });
+    try {
+      const { port } = new URL(circleServer.url);
+      const response = await fetch(`http://127.0.0.1:${port}/api/preset`, {
+        headers: { authorization: `Bearer ${token}` },
+      });
+      expect(((await response.json()) as Preset).defaultLayout).toBe("circle");
+    } finally {
+      await circleServer.close();
+    }
+  });
+
+  test("requires the session token", async () => {
+    const missing = await rawRequest("/api/preset");
+    const wrong = await rawRequest("/api/preset", { headers: { authorization: "Bearer wrong" } });
+    expect(missing.status).toBe(401);
+    expect(wrong.status).toBe(401);
+  });
+
+  test("cannot be changed through the API", async () => {
+    const response = await rawRequest("/api/preset", {
+      method: "PUT",
+      headers: { authorization: `Bearer ${token}`, "content-type": "application/json" },
+      body: "{}",
+    });
+    expect(response.status).toBe(404);
   });
 });
 

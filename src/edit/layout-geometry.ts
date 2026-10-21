@@ -176,3 +176,19 @@ export function coverPlacement(source: Size, requestedCrop: Rect, slot: Rect): P
     height,
   };
 }
+
+/**
+ * The part of a source video that a slot shows, in pixels of the source.
+ * The rest of the source is cut off by the slot.
+ */
+export function visibleSource(source: Size, requestedCrop: Rect, slot: Rect): Rect {
+  const placement = coverPlacement(source, requestedCrop, slot);
+  const x = clamp(-placement.x / placement.scale, 0, source.width);
+  const y = clamp(-placement.y / placement.scale, 0, source.height);
+  return {
+    x,
+    y,
+    width: Math.min(slot.width / placement.scale, source.width - x),
+    height: Math.min(slot.height / placement.scale, source.height - y),
+  };
+}

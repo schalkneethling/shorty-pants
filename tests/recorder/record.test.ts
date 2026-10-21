@@ -4,6 +4,7 @@ import { join } from "node:path";
 import { afterEach, beforeEach, describe, expect, test } from "vite-plus/test";
 import { run, type CliContext } from "../../src/cli.ts";
 import { recordShort } from "../../src/recorder/record.ts";
+import { defaultPreset } from "../../src/schemas/preset.ts";
 import { createFakeCommands } from "../helpers/fake-commands.ts";
 
 let workspace: string;
@@ -258,6 +259,62 @@ describe("short record", () => {
     const { context } = createContext();
     expect(await run(["record", "--fast"], io, context)).toBe(2);
     expect(output.stderr).toContain("Usage: short record");
+  });
+});
+
+describe("the preset in the recorder", () => {
+  /** Reads /api/preset the way the recorder page does, then finishes the take. */
+  function openAndReadPreset(read: (preset: unknown) => void) {
+    return async (url: string) => {
+      const pageUrl = new URL(url);
+      const token = new URLSearchParams(pageUrl.hash.slice(1)).get("token");
+      const response = await fetch(new URL("/api/preset", pageUrl), {
+        headers: { authorization: `Bearer ${token}` },
+      });
+      read(await response.json());
+      await recordTake(url);
+    };
+  }
+
+  test("sends the preset.json in the shorts root to the page", async () => {
+    mkdirSync(join(workspace, "shorts"), { recursive: true });
+    const preset = { ...defaultPreset, defaultLayout: "circle" };
+    writeFileSync(join(workspace, "shorts", "preset.json"), JSON.stringify(preset));
+    let received: unknown;
+    const { io } = createIo();
+    const { context } = createContext({
+      openUrl: openAndReadPreset((preset) => {
+        received = preset;
+      }),
+    });
+
+    expect(await run(["record", "Scroll"], io, context)).toBe(0);
+    expect(received).toEqual(preset);
+  });
+
+  test("sends the default preset when there is no preset.json", async () => {
+    let received: unknown;
+    const { io } = createIo();
+    const { context } = createContext({
+      openUrl: openAndReadPreset((preset) => {
+        received = preset;
+      }),
+    });
+
+    expect(await run(["record", "Scroll"], io, context)).toBe(0);
+    expect(received).toEqual(defaultPreset);
+  });
+
+  test("fails before the short folder is created when preset.json is not valid", async () => {
+    mkdirSync(join(workspace, "shorts"), { recursive: true });
+    writeFileSync(join(workspace, "shorts", "preset.json"), JSON.stringify({ version: 1 }));
+    const { io, output } = createIo();
+    const { context, opened } = createContext();
+
+    expect(await run(["record", "Scroll"], io, context)).toBe(1);
+    expect(output.stderr).toContain("preset.json");
+    expect(opened).toHaveLength(0);
+    expect(existsSync(join(workspace, "shorts", "2026-10-17-scroll"))).toBe(false);
   });
 });
 

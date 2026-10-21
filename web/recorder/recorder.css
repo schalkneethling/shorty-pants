@@ -1,3 +1,42 @@
+@property --frame-view-inline-size {
+  inherits: true;
+  initial-value: 360px;
+  syntax: "<length>";
+}
+
+/* One column. The frame comes after the controls. */
+.studio {
+  align-items: start;
+  display: grid;
+  gap: calc(var(--space) * 2);
+}
+
+.studio-controls {
+  display: grid;
+  gap: var(--space);
+}
+
+.studio-controls section {
+  display: grid;
+  gap: var(--space);
+}
+
+.studio-controls p {
+  margin: 0;
+}
+
+@media (min-width: 60rem) {
+  .studio {
+    grid-template-columns: minmax(18rem, 1fr) minmax(0, 1fr);
+  }
+
+  /* The frame stays in view while the controls scroll. */
+  .frame-preview {
+    inset-block-start: var(--space);
+    position: sticky;
+  }
+}
+
 .beats {
   background-color: var(--color-muted-surface);
   border-inline-start: 0.375rem solid var(--color-accent);
@@ -9,31 +48,82 @@
   margin-block: calc(var(--space) / 2) 0;
 }
 
-.previews {
-  display: grid;
-  gap: var(--space);
-  grid-template-columns: repeat(auto-fit, minmax(min(100%, 20rem), 1fr));
-}
-
-figure {
-  margin: 0;
-}
-
-video {
-  aspect-ratio: 16 / 9;
-  background-color: #000;
-  display: block;
-  inline-size: 100%;
-}
-
 .actions {
   display: flex;
   flex-wrap: wrap;
   gap: calc(var(--space) / 2);
-  margin-block-start: var(--space);
 }
 
 .elapsed {
   font-variant-numeric: tabular-nums;
-  margin-block-end: 0;
+}
+
+.preview-controls fieldset {
+  justify-items: start;
+}
+
+.frame-preview {
+  display: grid;
+  gap: calc(var(--space) / 2);
+  margin: 0;
+  min-inline-size: 0;
+}
+
+.preview-controls[hidden],
+.frame-preview[hidden] {
+  display: none;
+}
+
+/* The scroll area is as wide as its column. A view wider than that scrolls. */
+.frame-scroll {
+  /* Fit: the whole frame, 9:16, as tall as the window leaves room for once
+     the page padding and the caption line below the frame are taken off. */
+  --frame-view-inline-size: calc((100dvb - var(--space) * 2.5 - 1.5rem) * 9 / 16);
+
+  overflow: auto;
+}
+
+.frame-scroll[data-view="phone"] {
+  --frame-view-inline-size: 430px;
+}
+
+.frame-scroll[data-view="actual"] {
+  /* One pixel of the 1080 × 1920 short for each CSS pixel. */
+  --frame-view-inline-size: 1080px;
+}
+
+/* The frame measures itself from this wrapper, so changing the view is
+   changing its width, and nothing is drawn again. */
+.frame-view {
+  inline-size: var(--frame-view-inline-size);
+  max-inline-size: 100%;
+}
+
+.frame-scroll:not([data-view="fit"]) .frame-view {
+  max-inline-size: none;
+}
+
+.frame-preview figcaption {
+  color: var(--color-muted-text);
+}
+
+/* The headline and caption areas, drawn as outlines because nothing is
+   written in them yet. The label says which area is which. */
+.area-guide {
+  background-color: rgb(255 255 255 / 12%);
+  outline: calc(3 * var(--frame-pixel)) dashed rgb(255 255 255 / 90%);
+  outline-offset: calc(-3 * var(--frame-pixel));
+}
+
+.area-guide::before {
+  background-color: rgb(0 0 0 / 70%);
+  color: #fff;
+  content: attr(data-label);
+  font-size: calc(30 * var(--frame-pixel));
+  inset-block-start: 0;
+  inset-inline-start: 0;
+  line-height: 1.25;
+  padding-block: calc(4 * var(--frame-pixel));
+  padding-inline: calc(12 * var(--frame-pixel));
+  position: absolute;
 }

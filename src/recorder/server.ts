@@ -3,8 +3,15 @@ import { mkdir, rename, rm, writeFile } from "node:fs/promises";
 import type { IncomingMessage, ServerResponse } from "node:http";
 import { join } from "node:path";
 import { z } from "zod";
+import type { Preset } from "../schemas/preset.ts";
 import type { RecordedTakes } from "../schemas/recorded-takes.ts";
-import { HttpError, readJsonBody, send, startLocalServer } from "../server/local-server.ts";
+import {
+  HttpError,
+  readJsonBody,
+  send,
+  sendJson,
+  startLocalServer,
+} from "../server/local-server.ts";
 
 const tracks = ["cam", "screen"] as const;
 type Track = (typeof tracks)[number];
@@ -26,6 +33,8 @@ export interface RecorderServerOptions {
   // open in the browser cannot upload to or finish the take.
   token: string;
   now: () => Date;
+  // Read once by short record. The page draws its frame preview from it.
+  preset: Preset;
   maxUploadBytes?: number;
   port?: number;
 }
@@ -169,6 +178,11 @@ export async function startRecorderServer(options: RecorderServerOptions): Promi
   }
 
   async function handleApi(request: IncomingMessage, response: ServerResponse, pathname: string) {
+    if (request.method === "GET" && pathname === "/preset") {
+      sendJson(response, 200, options.preset);
+      return;
+    }
+
     const trackMatch = /^\/takes\/([a-z]+)$/.exec(pathname);
     const requestedTrack = trackMatch?.[1];
     if (request.method === "PUT" && requestedTrack !== undefined && requestedTrack !== "done") {
