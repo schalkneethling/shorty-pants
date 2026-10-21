@@ -59,18 +59,22 @@ export const defaultPreset: Preset = {
   },
   defaultLayout: "split",
   pauseThresholdMs: 600,
-  // The parts of the frame the Shorts player covers. Bottom and left come
-  // from four Shorts playing on desktop YouTube: the channel row, the title
-  // and a linked video pill reach about 270 pixels up (bottom 288 adds a
-  // margin), and the text starts about 40 pixels in (left 48 adds a margin).
-  // Top and right are estimates for the phone player, where the buttons and
-  // the top bar sit over the video; on desktop nothing covers them. The phone
-  // player has not been measured, so any of these may change once it is.
+  // The parts of the frame the Shorts player covers, measured from a Short
+  // playing on YouTube for Android, which covers more than desktop on every
+  // side. Each value adds a small margin to what was measured:
+  // - top: the Shorts heading, search and the Subscriptions, Live and Trends
+  //   chips reach about 247 pixels down;
+  // - bottom: the channel row, a one-line title and the comment bar reach
+  //   about 331 pixels up (a two-line title reaches about 390);
+  // - left: the avatar and the title start about 61 pixels in;
+  // - right: the column of Like, Comment, Save, Share and Remix buttons is
+  //   about 155 pixels wide.
+  // On desktop, only the bottom (about 270) and the left (about 40) are covered.
   safeZones: {
-    top: 240,
-    bottom: 288,
-    left: 48,
-    right: 192,
+    top: 256,
+    bottom: 352,
+    left: 64,
+    right: 168,
   },
 };
 

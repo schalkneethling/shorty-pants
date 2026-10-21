@@ -17,13 +17,19 @@ describe("parsePreset", () => {
     expect(defaultPreset.captions.wordsPerChunk).toBe(3);
   });
 
-  test("the default bottom safe zone covers the measured Shorts overlay, with a small margin", () => {
-    // Measured from desktop Shorts: the channel row, the title and a linked
-    // video pill reach about 270 pixels up from the bottom of the frame.
-    const tallestMeasuredOverlay = 270;
-    expect(defaultPreset.safeZones.bottom).toBeGreaterThanOrEqual(tallestMeasuredOverlay);
-    expect(defaultPreset.safeZones.bottom).toBeLessThanOrEqual(tallestMeasuredOverlay + 32);
-  });
+  // How far the Shorts player's own interface reaches into the frame on each
+  // side, in frame pixels. The phone player covers more than desktop on every
+  // side, so these come from a Short playing on YouTube for Android.
+  const measuredPhoneOverlay = { top: 247, bottom: 331, left: 61, right: 155 };
+
+  test.each(["top", "bottom", "left", "right"] as const)(
+    "the default %s safe zone covers the measured phone overlay, with a small margin",
+    (side) => {
+      const measured = measuredPhoneOverlay[side];
+      expect(defaultPreset.safeZones[side]).toBeGreaterThanOrEqual(measured);
+      expect(defaultPreset.safeZones[side]).toBeLessThanOrEqual(measured + 32);
+    },
+  );
 
   test("rejects a color that is not a six-digit hex value", () => {
     const preset = {

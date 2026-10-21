@@ -45,10 +45,10 @@ const presetsToCheck = [
 describe("safeArea", () => {
   test("is the part of the frame that the safe zones leave uncovered", () => {
     expect(safeArea(defaultPreset.safeZones)).toEqual({
-      x: 48,
-      y: 240,
-      width: 840,
-      height: 1392,
+      x: 64,
+      y: 256,
+      width: 848,
+      height: 1312,
     });
   });
 });
