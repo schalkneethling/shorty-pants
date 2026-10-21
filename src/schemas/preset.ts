@@ -59,12 +59,13 @@ export const defaultPreset: Preset = {
   },
   defaultLayout: "split",
   pauseThresholdMs: 600,
-  // The parts of the frame the Shorts player covers. Bottom and left are
-  // measured from four Shorts playing on desktop YouTube: the channel row, the
-  // title and a linked video pill reach about 270 pixels up, and the text
-  // starts about 40 pixels in. Top and right are still estimates for the
-  // phone player, where the buttons and the top bar sit over the video; on
-  // desktop nothing covers them. Replace them once a phone is measured.
+  // The parts of the frame the Shorts player covers. Bottom and left come
+  // from four Shorts playing on desktop YouTube: the channel row, the title
+  // and a linked video pill reach about 270 pixels up (bottom 288 adds a
+  // margin), and the text starts about 40 pixels in (left 48 adds a margin).
+  // Top and right are estimates for the phone player, where the buttons and
+  // the top bar sit over the video; on desktop nothing covers them. The phone
+  // player has not been measured, so any of these may change once it is.
   safeZones: {
     top: 240,
     bottom: 288,
