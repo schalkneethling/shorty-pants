@@ -81,6 +81,7 @@ const cropInputs = {
 };
 const cropResetButton = requireElement("crop-reset", HTMLButtonElement);
 const safeZonesToggle = requireElement("safe-zones-toggle", HTMLInputElement);
+const desktopSafeZonesSwitch = requireElement("desktop-safe-zones", HTMLInputElement);
 const headlineHelp = requireElement("headline-help", HTMLParagraphElement);
 
 const token = readSessionToken(window.location.hash);
@@ -695,6 +696,7 @@ async function initialise() {
     },
     project.preset,
   );
+  preview.showDesktopSafeZones(desktopSafeZonesSwitch.checked);
   headlineInput.value = headline?.text ?? "";
   // A saved accent that is the last word may only be the default, so it is
   // treated as chosen only when it is another word.
@@ -741,6 +743,9 @@ async function initialise() {
   cropResetButton.addEventListener("click", resetCrop);
   safeZonesToggle.addEventListener("change", () =>
     preview?.setSafeZonesVisible(safeZonesToggle.checked),
+  );
+  desktopSafeZonesSwitch.addEventListener("change", () =>
+    preview?.showDesktopSafeZones(desktopSafeZonesSwitch.checked),
   );
   trimStartInput.addEventListener("input", () => changeTrim("start"));
   trimEndInput.addEventListener("input", () => changeTrim("end"));

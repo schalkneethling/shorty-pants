@@ -11,14 +11,19 @@ export function placeElement(element: HTMLElement, rect: Rect) {
   element.style.setProperty("--height", String(rect.height));
 }
 
-/** Gives the frame the preset's caption colors and safe zones. */
+/** Hands the safe zones the guides draw to the frame's CSS. */
+export function showSafeZones(frame: HTMLElement, safeZones: Preset["safeZones"]) {
+  for (const [side, pixels] of Object.entries(safeZones)) {
+    frame.style.setProperty(`--safe-${side}`, String(pixels));
+  }
+}
+
+/** Gives the frame the preset's caption colors and the phone safe zones. */
 export function applyPreset(frame: HTMLElement, preset: Preset) {
   frame.style.setProperty("--caption-text", preset.captions.textColor);
   frame.style.setProperty("--caption-background", preset.captions.backgroundColor);
   frame.style.setProperty("--caption-accent", preset.captions.accentColor);
-  for (const [side, pixels] of Object.entries(preset.safeZones)) {
-    frame.style.setProperty(`--safe-${side}`, String(pixels));
-  }
+  showSafeZones(frame, preset.safeZones);
 }
 
 /**

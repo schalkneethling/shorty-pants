@@ -31,6 +31,19 @@ describe("parsePreset", () => {
     },
   );
 
+  test("the default desktop safe zones cover the measured desktop overlay, and nothing at the top or right", () => {
+    // On desktop, the channel row, the title and a linked video pill reach
+    // about 270 pixels up, the text starts about 40 pixels in, and the
+    // buttons sit outside the video.
+    expect(defaultPreset.desktopSafeZones).toEqual({ top: 0, bottom: 288, left: 48, right: 0 });
+  });
+
+  test("gives a preset without desktop safe zones the default ones", () => {
+    const { desktopSafeZones: _omitted, ...presetWithoutDesktopZones } = defaultPreset;
+    const result = parsePreset(presetWithoutDesktopZones);
+    expect(result.success && result.data.desktopSafeZones).toEqual(defaultPreset.desktopSafeZones);
+  });
+
   test("rejects a color that is not a six-digit hex value", () => {
     const preset = {
       ...defaultPreset,

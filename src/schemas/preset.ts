@@ -35,6 +35,20 @@ const safeZonesSchema = z
     path: ["right"],
   });
 
+// The parts of the frame the desktop Shorts player covers: the channel row,
+// the title and a linked video pill reach about 270 pixels up, the text
+// starts about 40 pixels in, and the buttons sit outside the video. Measured
+// from four Shorts, each value with a small margin. The guides can show these
+// instead of the phone zones, but the layout always keeps to the phone ones.
+const defaultDesktopSafeZones = { top: 0, bottom: 288, left: 48, right: 0 };
+
+const guideSafeZonesSchema = z.object({
+  top: pixels,
+  bottom: pixels,
+  left: pixels,
+  right: pixels,
+});
+
 /** Settings that are chosen once and reused for every short, stored as preset.json. */
 export const presetSchema = z.object({
   version: z.literal(1),
@@ -42,7 +56,11 @@ export const presetSchema = z.object({
   defaultLayout: layoutSchema,
   pauseThresholdMs: z.number().int().nonnegative(),
   // Areas that YouTube's own interface covers, in pixels of the 1080 × 1920 frame.
+  // The phone player covers the most, so the layout keeps to these.
   safeZones: safeZonesSchema,
+  // What the desktop player covers, shown by the guides on request only.
+  // Presets written before it existed get the measured default.
+  desktopSafeZones: guideSafeZonesSchema.default(defaultDesktopSafeZones),
 });
 
 export type Preset = z.infer<typeof presetSchema>;
@@ -69,13 +87,14 @@ export const defaultPreset: Preset = {
   // - left: the avatar and the title start about 61 pixels in;
   // - right: the column of Like, Comment, Save, Share and Remix buttons is
   //   about 155 pixels wide.
-  // On desktop, only the bottom (about 270) and the left (about 40) are covered.
+  // The desktop player covers less; see defaultDesktopSafeZones above.
   safeZones: {
     top: 256,
     bottom: 352,
     left: 64,
     right: 168,
   },
+  desktopSafeZones: defaultDesktopSafeZones,
 };
 
 export function parsePreset(input: unknown) {

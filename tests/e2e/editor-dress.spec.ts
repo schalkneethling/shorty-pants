@@ -2,6 +2,7 @@ import { writeFileSync } from "node:fs";
 import { join } from "node:path";
 import AxeBuilder from "@axe-core/playwright";
 import { expect, test, type Page } from "@playwright/test";
+import { defaultPreset } from "../../src/schemas/preset.ts";
 import {
   createEditorWorkspace,
   openEditor,
@@ -235,6 +236,24 @@ test("shows and hides the safe zone guides", async ({ page }) => {
   await expect(guides).toBeVisible();
   await page.getByRole("checkbox", { name: "Show safe zones" }).uncheck();
   await expect(guides).toBeHidden();
+});
+
+test("switches the safe zone guides between the phone and the desktop player", async ({ page }) => {
+  await openEditor(page, workspace);
+  await page.getByRole("checkbox", { name: "Show safe zones" }).check();
+  const desktopSwitch = page.getByRole("switch", { name: "Desktop safe zones" });
+  await expect(desktopSwitch).not.toBeChecked();
+  const bottomZone = page.locator(".safe-zone-bottom");
+  const phoneHeight = (await bottomZone.boundingBox())!.height;
+
+  await desktopSwitch.focus();
+  await page.keyboard.press("Space");
+  await expect(desktopSwitch).toBeChecked();
+  const desktopHeight = (await bottomZone.boundingBox())!.height;
+  expect(desktopHeight / phoneHeight).toBeCloseTo(
+    defaultPreset.desktopSafeZones.bottom / defaultPreset.safeZones.bottom,
+    2,
+  );
 });
 
 test("draws the headline and captions in the bundled Noto Sans", async ({ page }) => {

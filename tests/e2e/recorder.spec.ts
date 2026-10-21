@@ -444,6 +444,43 @@ test.describe("the frame preview", () => {
     await expect(page.locator("#captions-area")).toBeVisible();
   });
 
+  test("switches the safe zone guides between the phone and the desktop player", async ({
+    page,
+  }) => {
+    await setUpSources(page);
+    const desktopSwitch = page.getByRole("switch", { name: "Desktop safe zones" });
+    await expect(desktopSwitch).not.toBeChecked();
+
+    const frameBox = await boxOf(page, "#preview-frame");
+    const pixel = frameBox.width / 1080;
+    /** The headline area's place in the frame, which scrolling does not change. */
+    const headlineInFrame = async () => {
+      const frame = await boxOf(page, "#preview-frame");
+      const headline = await boxOf(page, "#headline-area");
+      return { x: headline.x - frame.x, y: headline.y - frame.y, width: headline.width };
+    };
+    const headlineBefore = await headlineInFrame();
+
+    // The switch is operated with the Space key, as the APG switch pattern asks.
+    await desktopSwitch.focus();
+    await page.keyboard.press("Space");
+    await expect(desktopSwitch).toBeChecked();
+    const bottomZone = await boxOf(page, ".safe-zone-bottom");
+    expect(bottomZone.height).toBeCloseTo(defaultPreset.desktopSafeZones.bottom * pixel, 0);
+    const rightZone = await boxOf(page, ".safe-zone-right");
+    expect(rightZone.width).toBeCloseTo(0, 0);
+    // Only the guides change: the headline and captions keep the phone layout.
+    const headlineAfter = await headlineInFrame();
+    expect(headlineAfter.x).toBeCloseTo(headlineBefore.x, 1);
+    expect(headlineAfter.y).toBeCloseTo(headlineBefore.y, 1);
+    expect(headlineAfter.width).toBeCloseTo(headlineBefore.width, 1);
+
+    await page.keyboard.press("Space");
+    await expect(desktopSwitch).not.toBeChecked();
+    const phoneBottomZone = await boxOf(page, ".safe-zone-bottom");
+    expect(phoneBottomZone.height).toBeCloseTo(defaultPreset.safeZones.bottom * pixel, 0);
+  });
+
   test("moves the area outlines with the layout", async ({ page }) => {
     await page.goto(server.url);
     await page.getByRole("radio", { name: "Circle cam" }).check();

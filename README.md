@@ -21,7 +21,7 @@ While you record, the page shows the camera and the window in the 1080 × 1920 f
 
 - **Preview layout** switches between split, face and circle cam at any time, even during a take. It changes only the preview. It is not saved, and you still choose a layout for each part of the short in the editor. The recording itself never changes: the camera and the window are recorded as they are.
 - **View size** sets how large the frame is drawn. Fit shows the whole frame in the window. Phone size draws it 430 pixels wide, close to a phone held upright. Actual pixels draws it 1080 pixels wide, one pixel of the short for each pixel on your screen, in an area that scrolls and can be reached with the keyboard.
-- **Guides** show the safe zones from the preset, and the areas where the headline and the captions will go. Both are on by default, and each has a checkbox to hide it.
+- **Guides** show the safe zones from the preset, and the areas where the headline and the captions will go. Both are on by default, and each has a checkbox to hide it. The Desktop safe zones switch shows what the desktop Shorts player covers instead of the phone player, which covers more. The headline and the captions always keep clear of the phone player, whichever guides are shown.
 
 Below the controls, a sentence says how the window fits the layout. For example, in split, each recorded pixel of the window may become 0.98 pixels of the short, and the short may show the middle 58% of the window's width and all of its height. A window that is wider than the layout is cut at its sides, so text near the edges of a wide window may not appear in the short. The preview shows the whole window, without a crop, as the editor and the render do until you choose a crop in the editor.
 
@@ -45,9 +45,9 @@ The model is `~/.cache/shorty-pants/models/ggml-small.en.bin` unless `--model` o
 
 `short edit <short folder>` opens the editor in your browser. The transcript is shown as words: select words and press Delete to cut them, and press Delete again to bring them back. The trim handles set where the short starts and ends, and pauses longer than the threshold in the preset are cut on their own. The preview plays the short with every cut applied, and each change is saved to `short.json` as you go. Press Done in the editor, or Ctrl+C in the terminal, when you are finished. Pass `--no-open` to print the editor address without opening a browser.
 
-The editor also dresses the short. Select words and choose a layout for them: split puts the shared window above the camera, face shows only the camera, and circle cam puts the camera in a circle over the window. Type a headline and pick its accent word, and crop the shared window if only part of it matters. The preview shows the captions as they will appear, a few words at a time with the current word lit, and Show safe zones dims the parts of the frame that YouTube's own buttons and text cover.
+The editor also dresses the short. Select words and choose a layout for them: split puts the shared window above the camera, face shows only the camera, and circle cam puts the camera in a circle over the window. Type a headline and pick its accent word, and crop the shared window if only part of it matters. The preview shows the captions as they will appear, a few words at a time with the current word lit, and Show safe zones dims the parts of the frame that YouTube's own buttons and text cover, on a phone or, with the Desktop safe zones switch on, on desktop.
 
-The caption style, the default layout, the pause threshold and the safe zones come from `preset.json` in the shorts root. Without one, the defaults are Noto Sans in white on dark purple, with yellow for the accent.
+The caption style, the default layout, the pause threshold and the safe zones come from `preset.json` in the shorts root. `safeZones` sets what the phone player covers, which the layout keeps clear of, and `desktopSafeZones` sets what the desktop guides show. Without one, the defaults are Noto Sans in white on dark purple, with yellow for the accent.
 
 ## Rendering
 

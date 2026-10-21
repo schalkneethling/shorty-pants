@@ -49,6 +49,7 @@ const frameCaption = requireElement("frame-caption", HTMLElement);
 const layoutChoice = requireElement("preview-layout", HTMLFieldSetElement);
 const viewSizeChoice = requireElement("view-size", HTMLFieldSetElement);
 const safeZonesToggle = requireElement("safe-zones-toggle", HTMLInputElement);
+const desktopSafeZonesSwitch = requireElement("desktop-safe-zones", HTMLInputElement);
 const areasToggle = requireElement("areas-toggle", HTMLInputElement);
 const screenFit = requireElement("screen-fit", HTMLParagraphElement);
 const previewUnavailable = requireElement("preview-unavailable", HTMLParagraphElement);
@@ -191,6 +192,7 @@ async function startFramePreview() {
   });
   showPreviewLayout(preset.defaultLayout);
   layoutFrame.setSafeZonesVisible(safeZonesToggle.checked);
+  layoutFrame.showDesktopSafeZones(desktopSafeZonesSwitch.checked);
   showAreas(areasToggle.checked);
 
   previewControls.hidden = false;
@@ -464,6 +466,9 @@ function initialise() {
   });
   safeZonesToggle.addEventListener("change", () =>
     layoutFrame?.setSafeZonesVisible(safeZonesToggle.checked),
+  );
+  desktopSafeZonesSwitch.addEventListener("change", () =>
+    layoutFrame?.showDesktopSafeZones(desktopSafeZonesSwitch.checked),
   );
   areasToggle.addEventListener("change", () => showAreas(areasToggle.checked));
   // The window can be resized while it is shared, which changes what it shows.

@@ -120,6 +120,62 @@ input[type="radio"] {
   accent-color: var(--color-accent);
 }
 
+/* A switch: a native checkbox with role="switch", drawn as a track with a
+   thumb. The thumb's position, not only its color, shows whether it is on. */
+input[type="checkbox"][role="switch"] {
+  appearance: none;
+  background-color: var(--color-muted-surface);
+  block-size: 1.5rem;
+  border: 0.125rem solid var(--color-muted-text);
+  border-radius: 0.75rem;
+  cursor: pointer;
+  flex-shrink: 0;
+  inline-size: 2.75rem;
+  margin: 0;
+  position: relative;
+}
+
+input[type="checkbox"][role="switch"]::before {
+  background-color: var(--color-muted-text);
+  block-size: 1rem;
+  border-radius: 50%;
+  content: "";
+  inline-size: 1rem;
+  inset-block-start: 0.125rem;
+  inset-inline-start: 0.125rem;
+  position: absolute;
+}
+
+input[type="checkbox"][role="switch"]:checked {
+  background-color: var(--color-accent);
+  border-color: var(--color-accent);
+}
+
+input[type="checkbox"][role="switch"]:checked::before {
+  background-color: var(--color-on-accent);
+  inset-inline-start: calc(100% - 1.125rem);
+}
+
+/* In forced colors, the track and thumb use the system colors. */
+@media (forced-colors: active) {
+  input[type="checkbox"][role="switch"] {
+    border-color: CanvasText;
+  }
+
+  input[type="checkbox"][role="switch"]::before {
+    background-color: CanvasText;
+  }
+
+  input[type="checkbox"][role="switch"]:checked {
+    background-color: Highlight;
+    border-color: Highlight;
+  }
+
+  input[type="checkbox"][role="switch"]:checked::before {
+    background-color: HighlightText;
+  }
+}
+
 input[type="text"],
 input[type="number"],
 select {
@@ -150,9 +206,10 @@ fieldset:disabled {
   opacity: 0.6;
 }
 
-/* A checkbox or radio button followed by its label, on one line. */
+/* A checkbox, radio button or switch followed by its label, on one line. */
 .checkbox-field,
-.radio-field {
+.radio-field,
+.switch-field {
   align-items: center;
   display: flex;
   gap: 0.5rem;
