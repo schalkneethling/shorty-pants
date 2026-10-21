@@ -50,6 +50,10 @@ export function createPreview(elements: LayoutFrameElements, preset: Preset) {
     setSafeZonesVisible(isVisible: boolean) {
       layoutFrame.setSafeZonesVisible(isVisible);
     },
+
+    showDesktopSafeZones(isDesktop: boolean) {
+      layoutFrame.showDesktopSafeZones(isDesktop);
+    },
   };
 }
 

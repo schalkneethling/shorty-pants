@@ -7,7 +7,7 @@ import {
 } from "../../src/edit/layout-geometry.ts";
 import type { Layout } from "../../src/schemas/layout-names.ts";
 import type { Preset } from "../../src/schemas/preset.ts";
-import { applyPreset, placeElement } from "./overlay-content.ts";
+import { applyPreset, placeElement, showSafeZones } from "./overlay-content.ts";
 
 export interface LayoutFrameElements {
   frame: HTMLElement;
@@ -84,6 +84,14 @@ export function createLayoutFrame(elements: LayoutFrameElements, preset: Preset)
 
     setSafeZonesVisible(isVisible: boolean) {
       elements.safeZones.hidden = !isVisible;
+    },
+
+    /**
+     * Shows the guides for the desktop player or for the phone player. The
+     * layout keeps to the phone zones either way, because they cover more.
+     */
+    showDesktopSafeZones(isDesktop: boolean) {
+      showSafeZones(frame, isDesktop ? preset.desktopSafeZones : preset.safeZones);
     },
   };
 }
