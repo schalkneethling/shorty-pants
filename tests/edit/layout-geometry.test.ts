@@ -48,7 +48,7 @@ describe("safeArea", () => {
       x: 48,
       y: 240,
       width: 840,
-      height: 1200,
+      height: 1392,
     });
   });
 });

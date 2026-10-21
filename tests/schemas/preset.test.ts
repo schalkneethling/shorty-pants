@@ -17,6 +17,14 @@ describe("parsePreset", () => {
     expect(defaultPreset.captions.wordsPerChunk).toBe(3);
   });
 
+  test("the default bottom safe zone covers the measured Shorts overlay, with a small margin", () => {
+    // Measured from desktop Shorts: the channel row, the title and a linked
+    // video pill reach about 270 pixels up from the bottom of the frame.
+    const tallestMeasuredOverlay = 270;
+    expect(defaultPreset.safeZones.bottom).toBeGreaterThanOrEqual(tallestMeasuredOverlay);
+    expect(defaultPreset.safeZones.bottom).toBeLessThanOrEqual(tallestMeasuredOverlay + 32);
+  });
+
   test("rejects a color that is not a six-digit hex value", () => {
     const preset = {
       ...defaultPreset,

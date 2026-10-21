@@ -59,11 +59,15 @@ export const defaultPreset: Preset = {
   },
   defaultLayout: "split",
   pauseThresholdMs: 600,
-  // Approximate values for the Shorts player interface. To be checked against
-  // a real upload in milestone 6, when the safe zone guides are built.
+  // The parts of the frame the Shorts player covers. Bottom and left are
+  // measured from four Shorts playing on desktop YouTube: the channel row, the
+  // title and a linked video pill reach about 270 pixels up, and the text
+  // starts about 40 pixels in. Top and right are still estimates for the
+  // phone player, where the buttons and the top bar sit over the video; on
+  // desktop nothing covers them. Replace them once a phone is measured.
   safeZones: {
     top: 240,
-    bottom: 480,
+    bottom: 288,
     left: 48,
     right: 192,
   },
