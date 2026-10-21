@@ -1,6 +1,6 @@
 {
   "name": "@schalkneethling/shorty-pants",
-  "version": "0.1.0",
+  "version": "0.2.0",
   "description": "A local-first tool that turns a moment of discovery while coding into a finished YouTube Short.",
   "keywords": [
     "captions",
